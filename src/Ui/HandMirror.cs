@@ -227,16 +227,16 @@ internal static class HandMirror
 
             if (ConfirmButtonField?.GetValue(hand) is NConfirmButton button)
             {
+                // 确认按钮直接在观战期间隐藏。
+                // 之前试过 Enable + MouseFilter.Ignore + SetProcessInput(false)，
+                // 但他的点击走的是子节点 hitbox，拦不住，出现过「观战者能点确认」的 bug。
+                // 按钮没有存在的必要：观战者本来就不能替他选。
+                button.Visible = !visible;
+                button.Disable();
+
                 if (visible)
                 {
-                    // 只做视觉：观战者不能替他确认。
-                    button.Enable();
                     button.MouseFilter = Control.MouseFilterEnum.Ignore;
-                    button.SetProcessInput(false);
-                }
-                else
-                {
-                    button.Disable();
                 }
             }
         }

@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -254,8 +255,18 @@ public static class SpectateChoice
                     disabled++;
                     break;
 
-                case BaseButton button:
-                    button.Disabled = true;
+                // NConfirmButton / 跳过按钮都是 NButton : NClickableControl : Control，
+                // 不是 Godot 的 BaseButton，之前的 case BaseButton 根本匹配不到它们，
+                // 这才是「观战者能点确认」的真正原因。
+                // Disable() 内部会 FocusMode = None 并 SetProcessInput(false)。
+                case NButton button:
+                    button.Disable();
+                    button.MouseFilter = Control.MouseFilterEnum.Ignore;
+                    disabled++;
+                    break;
+
+                case BaseButton baseButton:
+                    baseButton.Disabled = true;
                     disabled++;
                     break;
             }
