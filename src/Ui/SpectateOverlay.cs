@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -48,6 +49,7 @@ public static class SpectateOverlay
     private static HFlowContainer? _handRow;
     private static Godot.Timer? _refresh;
     private static Godot.Timer? _escapeWatch;
+    private static bool _wasInCombat;
 
     private static Player? _target;
     private static string _cachedName = string.Empty;
@@ -88,6 +90,15 @@ public static class SpectateOverlay
         try
         {
             _target = player;
+
+            try
+            {
+                _wasInCombat = CombatManager.Instance.IsInProgress;
+            }
+            catch
+            {
+                _wasInCombat = true;
+            }
             _cachedName = string.Empty;
             _handKey = string.Empty;
             SpectateRegistry.Remember(player);
@@ -272,6 +283,30 @@ public static class SpectateOverlay
         if (_target == null || _root == null || !GodotObject.IsInstanceValid(_root))
         {
             return;
+        }
+
+        // 战斗一结束就退出观战。
+        //
+        // 观战状态跨战斗残留是多个问题的共同来源：镜像 holder 属于已销毁的
+        // NPlayerHand、牌堆按钮还指着上一场的目标、遮罩/高亮层留在树上。
+        // CombatEndedEvent 在部分时序下不会触发（日志里看不到），这里用
+        // 「上一拍还在战斗、这一拍不在了」做兜底，避免误伤战斗外的观战。
+        try
+        {
+            bool inCombat = CombatManager.Instance.IsInProgress;
+
+            if (_wasInCombat && !inCombat)
+            {
+                ModEntry.Log.Info($"[{ModEntry.ModId}] combat ended; leaving spectate");
+                Close();
+                return;
+            }
+
+            _wasInCombat = inCombat;
+        }
+        catch
+        {
+            // ignored
         }
 
         CheckMirrorLeak();
