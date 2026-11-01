@@ -5,6 +5,7 @@ using Godot;
 using MegaCrit.sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.addons.mega_text;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -739,6 +740,69 @@ internal static class SpectateUi
         }
 
         node.ProcessMode = Node.ProcessModeEnum.Disabled;
+    }
+
+    /// <summary>
+    /// 观战期间手牌的禁用状态跟随「被观战的人」，而不是跟随自己。
+    ///
+    /// 自己结束回合时游戏会调用 NPlayerHand.AnimDisable（下移 100px + 变灰）。
+    /// 但此时我们显示的是队友的手牌，他还在行动，不该被禁用。
+    /// 这里每拍按他的 PlayerTurnPhase 对齐状态。
+    /// </summary>
+    public static void SyncHandEnabled(Player target)
+    {
+        Step("hand-enabled", () =>
+        {
+            NPlayerHand? hand = Hand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            {
+                return;
+            }
+
+            PlayerTurnPhase phase;
+            try
+            {
+                phase = target.PlayerCombatState?.Phase ?? PlayerTurnPhase.None;
+            }
+            catch
+            {
+                phase = PlayerTurnPhase.None;
+            }
+
+            // 他还在自己的回合里 → 手牌保持正常显示
+            bool active = phase is PlayerTurnPhase.Play
+                or PlayerTurnPhase.Start
+                or PlayerTurnPhase.AutoPrePlay;
+
+            InvokeMethod(hand, active ? "AnimEnable" : "AnimDisable");
+        });
+    }
+
+    /// <summary>
+    /// 退出观战后把状态还回自己：该灰就灰、该下移就下移。
+    /// </summary>
+    public static void RestoreOwnHandState()
+    {
+        Step("hand-state-restore", () =>
+        {
+            NPlayerHand? hand = Hand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            {
+                return;
+            }
+
+            bool active;
+            try
+            {
+                active = !CombatManager.Instance.PlayerActionsDisabled;
+            }
+            catch
+            {
+                active = true;
+            }
+
+            InvokeMethod(hand, active ? "AnimEnable" : "AnimDisable");
+        });
     }
 
     /// <summary>

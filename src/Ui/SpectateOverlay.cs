@@ -220,6 +220,7 @@ public static class SpectateOverlay
             _handKey = string.Empty;
             SpectateUi.SetInteraction(true);
             SpectateUi.Apply(null);
+            SpectateUi.RestoreOwnHandState();
         }
     }
 
@@ -333,6 +334,7 @@ public static class SpectateOverlay
         try
         {
             SpectateUi.TickDisplayed();
+            SpectateUi.SyncHandEnabled(_target);
         }
         catch (Exception e)
         {
