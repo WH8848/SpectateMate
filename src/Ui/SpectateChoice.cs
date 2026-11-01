@@ -48,6 +48,8 @@ public static class SpectateChoice
     private static bool _handSelecting;
     private static Func<CardModel, bool>? _handFilter;
     private static Player? _handOwner;
+    private static string _handPrompt = string.Empty;
+    private static bool _handUiShown;
     private static bool _subscribed;
 
     public static void RememberChooseACard(IReadOnlyList<CardModel> cards, bool canSkip, Player player)
@@ -74,19 +76,17 @@ public static class SpectateChoice
         _handFilter = filter;
         EnsureSubscribed();
 
-        string prompt = string.Empty;
-
         try
         {
-            prompt = prefs.Prompt.GetFormattedText();
+            _handPrompt = prefs.Prompt.GetFormattedText();
         }
         catch
         {
-            // 提示文字拿不到就不显示，不影响过滤。
+            _handPrompt = string.Empty;
         }
 
-        // 复刻原版：顶部提示 + 确认按钮（按钮仅视觉）。
-        HandMirror.ApplySelectionUi(visible: true, prompt);
+        // 真正的视觉切换交给 SyncHandSelection，这样退出观战再进来也能重新套用。
+        _handUiShown = false;
     }
 
     /// <summary>他完成选择（结果已送达）→ 退出选择模式。</summary>
@@ -95,6 +95,8 @@ public static class SpectateChoice
         _handSelecting = false;
         _handFilter = null;
         _handOwner = null;
+        _handPrompt = string.Empty;
+        _handUiShown = false;
         HandMirror.ClearHandSelection();
         HandMirror.ApplySelectionUi(visible: false, null);
     }
@@ -163,11 +165,20 @@ public static class SpectateChoice
         if (active)
         {
             HandMirror.ApplyHandSelection(_handFilter);
+
+            if (!_handUiShown)
+            {
+                // 复刻原版：顶部提示 + 确认按钮（按钮仅视觉）。
+                HandMirror.ApplySelectionUi(visible: true, _handPrompt);
+                _handUiShown = true;
+            }
         }
-        else if (_handSelecting)
+        else if (_handUiShown)
         {
-            // 观战目标换了，退出选择模式。
-            EndHandSelection();
+            // 只是暂时不可见（退出观战、切目标），保留状态以便回来时重新套用。
+            HandMirror.ApplySelectionUi(visible: false, null);
+            _handUiShown = false;
+            HandMirror.ClearHandSelection();
         }
     }
 
@@ -274,9 +285,15 @@ public static class SpectateChoice
     /// 退出观战时只关界面，保留最近一次候选。
     /// 他可能还停在选牌界面没动，重新观战时要能立刻再看到。
     /// </summary>
+    /// <summary>
+    /// 退出观战：只恢复视觉，保留「他还在选」这个事实。
+    /// 他可能一直停在弃牌/烧牌的选择页面没动，重新观战时要能立刻再看到。
+    /// </summary>
     public static void Reset()
     {
         Close();
-        EndHandSelection();
+        HandMirror.ApplySelectionUi(visible: false, null);
+        HandMirror.ClearHandSelection();
+        _handUiShown = false;
     }
 }
