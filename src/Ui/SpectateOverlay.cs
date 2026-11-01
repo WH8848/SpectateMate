@@ -320,8 +320,25 @@ public static class SpectateOverlay
 
                 // 这两个必须每拍无条件跑，之前放在 hover 分支里，
                 // 只在鼠标悬停到某张牌时才执行，所以原生编号一直没被压掉。
-                HandMirror.RefreshCostColors(cs.Energy);
-                HandMirror.HideVanillaLabels();
+                // 两者各自独立：费用刷新会读 MaxEnergy（走游戏 hook 链），
+                // 一旦它抛异常，编号压制就不能跟着被跳过。
+                try
+                {
+                    HandMirror.RefreshCostColors(cs.Energy);
+                }
+                catch (Exception e)
+                {
+                    ModEntry.Log.Warn($"[{ModEntry.ModId}] cost refresh failed: {e.Message}");
+                }
+
+                try
+                {
+                    HandMirror.HideVanillaLabels();
+                }
+                catch (Exception e)
+                {
+                    ModEntry.Log.Warn($"[{ModEntry.ModId}] vanilla label hide failed: {e.Message}");
+                }
             }
             else
             {
@@ -412,9 +429,22 @@ public static class SpectateOverlay
                 {
                     hp = "HP -";
                 }
-                string res = cs == null
-                    ? "不在战斗中"
-                    : $"能量 {cs.Energy}/{cs.MaxEnergy}  星 {cs.Stars}";
+                // 读 MaxEnergy 会触发 Hook.ModifyMaxEnergy 遍历战斗 hook 监听器；
+                // 那一链路上如果有坏监听器（别的 mod），这里就会抛 NRE 并让整个
+                // UpdateTexts 中断——后面的选牌驱动也就不会执行了。
+                string res;
+
+                try
+                {
+                    res = cs == null
+                        ? "不在战斗中"
+                        : $"能量 {cs.Energy}/{cs.MaxEnergy}  星 {cs.Stars}";
+                }
+                catch
+                {
+                    res = cs == null ? "不在战斗中" : $"能量 {cs.Energy}";
+                }
+
                 _vitals.Text = hp + "    " + res;
             }
 

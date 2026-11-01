@@ -87,7 +87,13 @@ internal static class HandMirror
                 ?? ContainerOf(SpectateUi.Hand)
                 ?? ContainerOf(_lastHand);
 
-            if (container != null && container.Modulate.A <= 0f)
+            if (container == null)
+            {
+                ModEntry.Log.Info($"[{ModEntry.ModId}] vanilla hand container not found during reset");
+                return;
+            }
+
+            if (container.Modulate.A <= 0f)
             {
                 container.Modulate = Colors.White;
                 ModEntry.Log.Info($"[{ModEntry.ModId}] vanilla hand container was left transparent; restored");
@@ -346,6 +352,14 @@ internal static class HandMirror
 
     public static void Hide(NPlayerHand? hand, bool restoreVanilla = true)
     {
+        // 先把状态位清掉再做任何可能抛异常的事：FreeHolders / DestroyHolder
+        // 一旦中途失败，_active 会停在 true，泄漏自检就会每拍反复触发、
+        // 反复调用 Hide，形成死循环（日志里那句 leak detected 刷屏）。
+        _active = false;
+        _key = string.Empty;
+        _hoverId = null;
+        _lastEnergy = int.MinValue;
+
         hand ??= _lastHand;
 
         try
@@ -374,8 +388,6 @@ internal static class HandMirror
         }
 
         Detached.Clear();
-        _hoverId = null;
-        _lastEnergy = int.MinValue;
 
         Settling.Clear();
         FreeHolders();
@@ -387,8 +399,6 @@ internal static class HandMirror
         }
 
         _layer = null;
-        _key = string.Empty;
-        _active = false;
     }
 
     private static void Rebuild(NPlayerHand hand, IReadOnlyList<CardModel> cards, StringName key)
