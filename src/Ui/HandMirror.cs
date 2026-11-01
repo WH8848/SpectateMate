@@ -1097,6 +1097,44 @@ internal static class HandMirror
         Holders.Clear();
     }
 
+    /// <summary>
+    /// 把原生 holder 的编号标签强制隐藏。
+    ///
+    /// 容器虽然被 Modulate 调到 alpha=0，但只要有任何一处让某个 holder 的
+    /// Modulate 被单独覆盖，标签就会露出来，表现为手牌上方多出一个编号。
+    /// SetIndexLabel(0) 会同时把文字设空并把 Visible 置 false，比依赖父级调制更可靠。
+    /// 本地玩家每次抽牌都会新建 holder，所以这个方法需要每拍调用（幂等且便宜）。
+    /// </summary>
+    public static void HideVanillaLabels()
+    {
+        try
+        {
+            NPlayerHand? hand = _lastHand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            {
+                return;
+            }
+
+            Control? container = ContainerOf(hand);
+            if (container == null)
+            {
+                return;
+            }
+
+            foreach (Node child in container.GetChildren())
+            {
+                if (child is NHandCardHolder holder && GodotObject.IsInstanceValid(holder))
+                {
+                    holder.SetIndexLabel(0);
+                }
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void HideVanillaNodes(NPlayerHand hand)
     {
         Control? container = ContainerOf(hand);

@@ -411,6 +411,7 @@ public static class SpectateOverlay
                 try
                 {
                     HandMirror.RefreshCostColors(cs?.Energy ?? int.MinValue);
+                    HandMirror.HideVanillaLabels();
                 }
                 catch (Exception e)
                 {
