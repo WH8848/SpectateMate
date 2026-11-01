@@ -260,6 +260,9 @@ public static class SpectateChoice
                 // 这才是「观战者能点确认」的真正原因。
                 // Disable() 内部会 FocusMode = None 并 SetProcessInput(false)。
                 case NButton button:
+                    // 观战者不能替他做任何操作，按钮没有存在的必要，直接隐藏。
+                    // 这些界面都是我们自己创建的实例，隐藏不会影响他那边。
+                    button.Visible = false;
                     button.Disable();
                     button.MouseFilter = Control.MouseFilterEnum.Ignore;
                     disabled++;
