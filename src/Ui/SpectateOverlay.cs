@@ -29,7 +29,7 @@ namespace SpectateMate.Ui;
 /// </summary>
 public static class SpectateOverlay
 {
-    private const float RefreshSeconds = 0.25f;
+    private const float RefreshSeconds = 0.15f;
     private const ulong ToggleDebounceMs = 150;
 
     private static ulong _lastToggleMs;
