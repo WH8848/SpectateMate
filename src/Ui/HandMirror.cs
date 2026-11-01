@@ -30,8 +30,10 @@ internal static class HandMirror
     public static readonly bool Enabled = true;
 
     private const float SpawnOffsetY = 180f;
+    private const float PlayedFlightSeconds = 0.32f;
 
     private static readonly List<NHandCardHolder> Holders = new();
+    private static readonly List<NHandCardHolder> Detached = new();
 
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
@@ -151,6 +153,12 @@ internal static class HandMirror
             // ignored
         }
 
+        foreach (NHandCardHolder flying in Detached.ToArray())
+        {
+            DestroyHolder(flying);
+        }
+
+        Detached.Clear();
         FreeHolders();
 
         if (_layer != null && GodotObject.IsInstanceValid(_layer))
@@ -166,92 +174,172 @@ internal static class HandMirror
 
     private static void Rebuild(NPlayerHand hand, IReadOnlyList<CardModel> cards, StringName key)
     {
-        FreeHolders();
         HideVanillaNodes(hand);
 
         Control layer = EnsureLayer(hand);
         int count = Math.Min(cards.Count, 10);
-        if (count <= 0)
-        {
-            _key = key;
-            _active = true;
-            Diag("showing 0 cards");
-            return;
-        }
 
-        Vector2 scale = HandPosHelper.GetScale(count);
-        bool firstPaint = !_active;
-
-        for (int i = 0; i < count; i++)
+        // 按 CardModel 实例匹配已有 holder：还在手里的牌保留原节点，
+        // 这样它们的位移动画由 RefreshLayout 平滑完成，而不是被销毁重建。
+        var existing = new Dictionary<CardModel, NHandCardHolder>(Holders.Count);
+        foreach (NHandCardHolder holder in Holders)
         {
-            NCard? card = NCard.Create(cards[i]);
-            if (card == null)
+            if (holder == null || !GodotObject.IsInstanceValid(holder))
             {
                 continue;
             }
 
-            card.Visibility = ModelVisibility.Visible;
-            card.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
-
-            NHandCardHolder holder = NHandCardHolder.Create(card, hand);
-            holder.MouseFilter = Control.MouseFilterEnum.Stop;
-            layer.AddChild(holder);
-            holder.SetClickable(true);
-
-            // _Ready disables the hitbox and only AnimPosition re-enables it if the
-            // holder is already near its target. Enable it explicitly so the mirror
-            // actually receives hover — otherwise the click falls through to the
-            // (invisible) vanilla holder underneath and the card never lifts.
-            holder.Hitbox.SetEnabled(true);
-            holder.Hitbox.MouseFilter = Control.MouseFilterEnum.Stop;
-
-            // Holder._Ready only refreshes once; force the card visuals now that
-            // both the holder and the card node are inside the tree.
-            card.Visible = true;
-            card.Modulate = Colors.White;
-            card.Scale = Vector2.One;
-            card.Position = Vector2.Zero;
-            holder.UpdateCard();
-
-            Vector2 target = HandPosHelper.GetPosition(count, i);
-            float angle = HandPosHelper.GetAngle(count, i);
-
-            if (firstPaint)
+            if (holder.CardNode?.Model is { } model)
             {
-                holder.Position = target;
-                holder.SetAngleInstantly(angle);
-                holder.SetScaleInstantly(scale);
+                existing[model] = holder;
+            }
+        }
+
+        var next = new List<NHandCardHolder>(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            CardModel model = cards[i];
+
+            if (!existing.TryGetValue(model, out NHandCardHolder? holder) || holder == null)
+            {
+                holder = CreateHolder(hand, layer, model);
+                if (holder == null)
+                {
+                    continue;
+                }
             }
             else
             {
-                // Start below the fan; the holder's own _Process slides it in.
-                holder.Position = target + new Vector2(0f, SpawnOffsetY);
-                holder.SetAngleInstantly(angle);
-                holder.SetScaleInstantly(scale);
+                existing.Remove(model);
             }
 
-            holder.SetTargetPosition(target);
-            holder.SetTargetAngle(angle);
-            holder.SetTargetScale(scale);
-
-            holder.Connect(
-                NHandCardHolder.SignalName.HolderFocused,
-                Callable.From<NHandCardHolder>(OnHolderFocused));
-            holder.Connect(
-                NHandCardHolder.SignalName.HolderUnfocused,
-                Callable.From<NHandCardHolder>(OnHolderUnfocused));
-
-            Holders.Add(holder);
+            next.Add(holder);
         }
+
+        // 仍留在 existing 里的，就是他打出去的那几张。
+        foreach (NHandCardHolder played in existing.Values)
+        {
+            AnimatePlayedCard(played);
+        }
+
+        Holders.Clear();
+        Holders.AddRange(next);
 
         _key = key;
         _active = true;
 
-        // ActiveHolders now reports our holders; let vanilla RefreshLayout place
-        // them (fan geometry, hover lift, neighbour push-aside, focus neighbours).
+        // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
         hand.ForceRefreshCardIndices();
 
         Diag($"showing {Holders.Count} cards via vanilla layout");
+    }
+
+    private static NHandCardHolder? CreateHolder(NPlayerHand hand, Control layer, CardModel model)
+    {
+        NCard? card = NCard.Create(model);
+        if (card == null)
+        {
+            return null;
+        }
+
+        card.Visibility = ModelVisibility.Visible;
+        card.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
+
+        NHandCardHolder holder = NHandCardHolder.Create(card, hand);
+        holder.MouseFilter = Control.MouseFilterEnum.Stop;
+        layer.AddChild(holder);
+        holder.SetClickable(true);
+
+        // _Ready 会关闭 Hitbox，只有 AnimPosition 在接近目标时才重新开启。
+        // 这里显式打开，否则镜像卡收不到悬停。
+        holder.Hitbox.SetEnabled(true);
+        holder.Hitbox.MouseFilter = Control.MouseFilterEnum.Stop;
+
+        card.Visible = true;
+        card.Modulate = Colors.White;
+        card.Scale = Vector2.One;
+        card.Position = Vector2.Zero;
+        holder.UpdateCard();
+
+        holder.Connect(
+            NHandCardHolder.SignalName.HolderFocused,
+            Callable.From<NHandCardHolder>(OnHolderFocused));
+        holder.Connect(
+            NHandCardHolder.SignalName.HolderUnfocused,
+            Callable.From<NHandCardHolder>(OnHolderUnfocused));
+
+        return holder;
+    }
+
+    /// <summary>
+    /// 他打出的牌：立刻脱离布局（其余牌马上回流），卡面飞向屏幕中心并淡出。
+    /// 补间作用在 CardNode 上而不是 holder，避开 holder 自身的 AnimPosition 协程。
+    /// </summary>
+    private static void AnimatePlayedCard(NHandCardHolder holder)
+    {
+        try
+        {
+            if (holder == null || !GodotObject.IsInstanceValid(holder))
+            {
+                return;
+            }
+
+            NCard? card = holder.CardNode;
+            Detached.Add(holder);
+
+            if (card == null || !GodotObject.IsInstanceValid(card))
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            Vector2 centre = card.GetViewportRect().Size * 0.5f;
+
+            Tween tween = card.CreateTween();
+            tween.SetParallel(true);
+            tween.TweenProperty(card, "global_position", centre, PlayedFlightSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.In);
+            tween.TweenProperty(card, "scale", Vector2.One * 1.35f, PlayedFlightSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.Out);
+            tween.TweenProperty(card, "modulate:a", 0f, PlayedFlightSeconds)
+                .SetDelay(PlayedFlightSeconds * 0.45f);
+            tween.Chain().TweenCallback(Callable.From(() => DestroyHolder(holder)));
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] played-card animation failed: {e.Message}");
+            DestroyHolder(holder);
+        }
+    }
+
+    private static void DestroyHolder(NHandCardHolder holder)
+    {
+        try
+        {
+            Detached.Remove(holder);
+
+            if (holder == null || !GodotObject.IsInstanceValid(holder))
+            {
+                return;
+            }
+
+            NCard? card = holder.CardNode;
+            holder.GetParent()?.RemoveChild(holder);
+            holder.QueueFree();
+
+            if (card != null && GodotObject.IsInstanceValid(card))
+            {
+                card.GetParent()?.RemoveChild(card);
+                NodePool.Free(card);
+            }
+        }
+        catch
+        {
+            // ignored
+        }
     }
 
     private static Control EnsureLayer(NPlayerHand hand)
