@@ -148,6 +148,11 @@ public static class SpectateChoice
         if (shouldShow)
         {
             Show();
+
+            // 选牌网格的卡片是延迟创建的（日志里 Show 时 cards=0），
+            // 只在 Show() 里禁用一次会漏掉后生成的卡片，观战者就能点到它们。
+            // 这里每拍补一次，DisableInput 本身是幂等的。
+            DisableInput(_screen as Node);
         }
         else
         {
@@ -203,7 +208,7 @@ public static class SpectateChoice
 
             _hoverId = null;
 
-            DisableInput(_screen as Node);
+            DisableInput(_screen as Node, logCount: true);
             ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: {_mode} ({DescribeCount()})");
 
             // 诊断：界面建出来了但卡片是空的，需要区分「没填充」和「填充了但不可见」。
@@ -257,7 +262,7 @@ public static class SpectateChoice
     private static string DescribeCount() =>
         _mode == Mode.CombatPile ? $"pile={_pile?.Type}" : $"{_cards?.Count ?? 0} 张";
 
-    private static void DisableInput(Node? root)
+    private static void DisableInput(Node? root, bool logCount = false)
     {
         if (root == null || !GodotObject.IsInstanceValid(root))
         {
@@ -300,7 +305,10 @@ public static class SpectateChoice
             }
         }
 
-        ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: input disabled on {disabled} nodes");
+        if (logCount)
+        {
+            ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: input disabled on {disabled} nodes");
+        }
     }
 
     private static ModelId? _hoverId;
