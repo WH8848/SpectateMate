@@ -233,7 +233,10 @@ internal static class HandMirror
         // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
         hand.ForceRefreshCardIndices();
 
-        Diag($"showing {Holders.Count} cards via vanilla layout");
+        Control? ctr = ContainerOf(hand);
+        Diag(
+            $"showing {Holders.Count} cards | layer={_layer?.Position}/{_layer?.Size} " +
+            $"ctr={ctr?.Position}/{ctr?.Size}");
     }
 
     private static NHandCardHolder? CreateHolder(NPlayerHand hand, Control layer, CardModel model)
@@ -423,19 +426,29 @@ internal static class HandMirror
     /// </summary>
     private static void ApplyLayerBounds(Control layer, Control? container)
     {
-        layer.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
-
         if (container != null && GodotObject.IsInstanceValid(container))
         {
-            layer.Position = container.Position;
+            // 复制锚点与偏移，而不是复制当前的 Position/Size。
+            // 回合结束会把手牌整体下移（AnimDisable），窗口缩放也会改变容器尺寸；
+            // 只有锚点相同，镜像层才会和原生容器保持完全重合。
+            layer.AnchorLeft = container.AnchorLeft;
+            layer.AnchorRight = container.AnchorRight;
+            layer.AnchorTop = container.AnchorTop;
+            layer.AnchorBottom = container.AnchorBottom;
+            layer.OffsetLeft = container.OffsetLeft;
+            layer.OffsetRight = container.OffsetRight;
+            layer.OffsetTop = container.OffsetTop;
+            layer.OffsetBottom = container.OffsetBottom;
+
             layer.Scale = container.Scale;
             layer.Rotation = container.Rotation;
             layer.PivotOffset = container.PivotOffset;
-
-            if (container.Size.X > 0f && container.Size.Y > 0f)
-            {
-                layer.Size = container.Size;
-            }
+        }
+        else
+        {
+            layer.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+            layer.Position = Vector2.Zero;
+            layer.Size = Vector2.Zero;
         }
 
         // Keep the default z-order: a high value here would draw the mirror
