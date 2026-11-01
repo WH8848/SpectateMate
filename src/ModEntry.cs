@@ -32,6 +32,7 @@ public static class ModEntry
             patcher.RegisterPatch<CombatUiActivatePatch>();
             patcher.RegisterPatch<HandPlayBlockPatch>();
             patcher.RegisterPatch<AvatarOrderPatch>();
+            patcher.RegisterPatch<ActiveHoldersPatch>();
             RitsuLibFramework.ApplyRequiredPatcher(patcher, OnRequiredPatchFailed);
 
             RitsuLibFramework.SubscribeLifecycle<RunEndedEvent>(_ => SpectateOverlay.CloseAll());

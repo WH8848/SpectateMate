@@ -36,13 +36,29 @@ internal static class HandMirror
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
     private static bool _vanillaHidden;
-    private static int _focusedIndex = -1;
     private static Color _savedModulate = Colors.White;
     private static StringName _key = string.Empty;
     private static bool _active;
     private static string _lastDiag = string.Empty;
 
     public static bool IsShowing => _active;
+
+    /// <summary>
+    /// The holders the vanilla layout should position. Empty when not spectating,
+    /// which makes ActiveHoldersPatch fall through to the original getter.
+    /// </summary>
+    public static IReadOnlyList<NHandCardHolder> MirrorHolders =>
+        _active && Holders.Count > 0 ? Holders : Array.Empty<NHandCardHolder>();
+
+    private static readonly System.Reflection.FieldInfo? FocusedHolderField =
+        typeof(NPlayerHand).GetField(
+            "<FocusedHolder>k__BackingField",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    private static readonly System.Reflection.FieldInfo? LastFocusedIdxField =
+        typeof(NPlayerHand).GetField(
+            "_lastFocusedHolderIdx",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
     private static void Diag(string message)
     {
@@ -146,7 +162,6 @@ internal static class HandMirror
         _layer = null;
         _key = string.Empty;
         _active = false;
-        _focusedIndex = -1;
     }
 
     private static void Rebuild(NPlayerHand hand, IReadOnlyList<CardModel> cards, StringName key)
@@ -231,7 +246,12 @@ internal static class HandMirror
 
         _key = key;
         _active = true;
-        Diag($"showing {Holders.Count} cards (holders={hand.ActiveHolders.Count})");
+
+        // ActiveHolders now reports our holders; let vanilla RefreshLayout place
+        // them (fan geometry, hover lift, neighbour push-aside, focus neighbours).
+        hand.ForceRefreshCardIndices();
+
+        Diag($"showing {Holders.Count} cards via vanilla layout");
     }
 
     private static Control EnsureLayer(NPlayerHand hand)
@@ -365,79 +385,32 @@ internal static class HandMirror
 
     private static void OnHolderFocused(NHandCardHolder holder)
     {
-        int index = Holders.IndexOf(holder);
-        if (index < 0)
+        NPlayerHand? hand = _lastHand;
+        if (hand == null || !GodotObject.IsInstanceValid(hand))
         {
             return;
         }
 
-        _focusedIndex = index;
-        ApplyFocusLayout();
+        // GetIndex() is an extension that assumes a real hand holder; use our own
+        // list index instead. RefreshLayout only needs FocusedHolder for the
+        // identity check and _lastFocusedHolderIdx for the default-focus fallback.
+        int index = Holders.IndexOf(holder);
+        FocusedHolderField?.SetValue(hand, holder);
+        LastFocusedIdxField?.SetValue(hand, index);
+        hand.ForceRefreshCardIndices();
     }
 
     private static void OnHolderUnfocused(NHandCardHolder holder)
     {
-        int index = Holders.IndexOf(holder);
-        if (index != _focusedIndex)
+        NPlayerHand? hand = _lastHand;
+        if (hand == null || !GodotObject.IsInstanceValid(hand))
         {
             return;
         }
 
-        _focusedIndex = -1;
-        ApplyFocusLayout();
-    }
-
-    /// <summary>
-    /// Same rules as NPlayerHand.RefreshLayout: the focused card straightens up and
-    /// lifts by half its hitbox height, neighbours slide aside proportionally.
-    /// We can't use the vanilla method because our holders are not in
-    /// ActiveHolders — the game does not know they exist.
-    /// </summary>
-    private static void ApplyFocusLayout()
-    {
-        int count = Holders.Count;
-        if (count == 0)
-        {
-            return;
-        }
-
-        Vector2 scale = HandPosHelper.GetScale(count);
-        for (int i = 0; i < count; i++)
-        {
-            NHandCardHolder holder = Holders[i];
-            if (holder == null || !GodotObject.IsInstanceValid(holder))
-            {
-                continue;
-            }
-
-            Vector2 position = HandPosHelper.GetPosition(count, i);
-
-            if (_focusedIndex < 0)
-            {
-                holder.SetTargetPosition(position);
-                holder.SetTargetScale(scale);
-                holder.SetTargetAngle(HandPosHelper.GetAngle(count, i));
-                holder.ZIndex = 0;
-                continue;
-            }
-
-            if (i == _focusedIndex)
-            {
-                holder.SetAngleInstantly(0f);
-                holder.SetScaleInstantly(Vector2.One);
-                position.Y = (0f - holder.Hitbox.Size.Y) * 0.5f + 2f;
-                holder.SetTargetPosition(position);
-                holder.ZIndex = 20;
-                continue;
-            }
-
-            float push = Mathf.Lerp(100f, 0f, Mathf.Min(1f, Mathf.Abs(_focusedIndex - i) / 4f));
-            position += Vector2.Left * Mathf.Sign(_focusedIndex - i) * push;
-            holder.SetTargetPosition(position);
-            holder.SetTargetScale(scale);
-            holder.SetTargetAngle(HandPosHelper.GetAngle(count, i));
-            holder.ZIndex = 0;
-        }
+        FocusedHolderField?.SetValue(hand, null);
+        LastFocusedIdxField?.SetValue(hand, -1);
+        hand.ForceRefreshCardIndices();
     }
 
     private static Control? ContainerOf(NPlayerHand? hand)
