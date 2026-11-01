@@ -304,13 +304,12 @@ public static class SpectateChoice
     }
 
     private static ModelId? _hoverId;
-    private static Color _hoverColor = Colors.Gold;
 
     /// <summary>
     /// 高亮他在选牌界面里悬停的那张。选牌界面里的卡也是我们自己创建的 NCard，
     /// 直接遍历界面子节点匹配 ModelId 即可。颜色由调用方按角色提供。
     /// </summary>
-    public static void HighlightHovered(ModelId? id, Color color)
+    public static void HighlightHovered(ModelId? id)
     {
         // 界面还没建出来时不能写缓存：否则等界面创建后，id 与缓存相同会被直接跳过，
         // 表现为「悬停高亮永远不出现」。
@@ -319,13 +318,12 @@ public static class SpectateChoice
             return;
         }
 
-        if (id == _hoverId && color == _hoverColor)
+        if (id == _hoverId)
         {
             return;
         }
 
         _hoverId = id;
-        _hoverColor = color;
 
         try
         {
@@ -345,9 +343,9 @@ public static class SpectateChoice
 
                 bool match = id != null && card.Model != null && card.Model.Id == id;
 
+                // 与原版一致：不改颜色，只让描边变粗（颜色沿用稀有度色）。
                 if (match)
                 {
-                    card.CardHighlight.Modulate = color;
                     card.CardHighlight.AnimShow();
                 }
                 else
