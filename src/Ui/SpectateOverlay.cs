@@ -293,7 +293,7 @@ public static class SpectateOverlay
     /// <summary>观战已结束但镜像还挂着 → 立即恢复，避免影响自己的手牌。</summary>
     private static void CheckMirrorLeak()
     {
-        if (!DisplayedPlayer.IsActive && HandMirror.IsShowing)
+        if (!IsOpen && HandMirror.IsShowing)
         {
             HandMirror.ForceHide();
         }

@@ -37,10 +37,14 @@ internal sealed class ActiveHoldersPatch : IPatchMethod
             return true;
         }
 
-        // 自检：观战已经结束（没有目标）却还在劫持 ActiveHolders。
-        // 这会让游戏拿我们的镜像 holder 去排自己的手牌，表现为手牌位置全乱。
-        // 这里立刻恢复，然后照常走原版 getter。
-        if (!DisplayedPlayer.IsActive)
+        // 自检：观战窗口已经关闭却还在劫持 ActiveHolders。
+        //
+        // 注意不能用 DisplayedPlayer.IsActive —— 那个标志只在补丁的
+        // Prefix → Finalizer 期间为 true（即重定向生效的那几毫秒）。
+        // 用它判断会导致：正在观战时每拍都被判成「泄漏」并 ForceHide，
+        // 下一拍 Rebuild 又把 _active 设回 true，形成死循环，
+        // 表现为 hand mirror leak detected 刷屏、手牌反复隐藏与恢复。
+        if (!SpectateOverlay.IsOpen)
         {
             HandMirror.ForceHide();
             return true;
