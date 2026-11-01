@@ -52,6 +52,10 @@ public static class SpectateChoice
     private static Player? _handOwner;
     private static string _handPrompt = string.Empty;
     private static bool _handUiShown;
+    private static ulong _handStartedMs;
+
+    // 兜底超时：正常选择几秒就结束，这里给足余量，避免误伤长考。
+    private const ulong HandSelectionTimeoutMs = 20000;
     private static bool _subscribed;
 
     public static void RememberChooseACard(IReadOnlyList<CardModel> cards, bool canSkip, Player player)
@@ -76,6 +80,7 @@ public static class SpectateChoice
         _handSelecting = true;
         _handOwner = player;
         _handFilter = filter;
+        _handStartedMs = Godot.Time.GetTicksMsec();
         EnsureSubscribed();
 
         try
@@ -98,6 +103,7 @@ public static class SpectateChoice
         _handFilter = null;
         _handOwner = null;
         _handPrompt = string.Empty;
+        _handStartedMs = 0;
         _handUiShown = false;
         HandMirror.ClearHandSelection();
         HandMirror.ClearHighlight();
@@ -164,14 +170,26 @@ public static class SpectateChoice
 
     private static void SyncHandSelection(Player? target, NetScreenType screenType)
     {
-        // 界面类型也要参与判断：他选完之后 NetScreenType 会离开 CardSelection，
-        // 如果只看 _handSelecting 就会一直卡在弃牌界面。
+        // 注意：不能拿 screenType == CardSelection 当条件。
+        // 手牌选择（弃牌/烧牌/暴政）走的是 NPlayerHand.SelectCards，
+        // 它不压覆盖层，NetScreenType 始终是 Room，用了这个条件会导致
+        // 遮罩和提示永远不出现。
+        //
+        // 结束信号以 PlayerChoiceReceived 为准；另外挂一个长超时兜底，
+        // 万一事件丢了也不会永久停在选择模式。
+        if (_handSelecting && _handStartedMs != 0
+            && Godot.Time.GetTicksMsec() - _handStartedMs > HandSelectionTimeoutMs)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand selection timed out; clearing");
+            EndHandSelection();
+            return;
+        }
+
         bool active =
             _handSelecting &&
             target != null &&
             _handOwner != null &&
-            _handOwner.NetId == target.NetId &&
-            screenType == NetScreenType.CardSelection;
+            _handOwner.NetId == target.NetId;
 
         if (active)
         {

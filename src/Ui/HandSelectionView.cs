@@ -40,6 +40,8 @@ public static class HandSelectionView
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
     private static Tween? _backstopTween;
+    private static bool _warnedHeader;
+    private static bool _warnedBackstop;
 
     /// <summary>按 filter 隐藏不可选的牌；filter 为 null 表示全部可选。</summary>
     public static void ApplyFilter(
@@ -98,10 +100,16 @@ public static class HandSelectionView
                     header.Text = "[center]" + prompt + "[/center]";
                 }
             }
+            else if (visible && !_warnedHeader)
+            {
+                _warnedHeader = true;
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] selection header node missing; prompt will not show");
+            }
 
             if (SelectModeBackstopField?.GetValue(hand) is Control backstop)
             {
                 backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
+                _warnedBackstop = false;
 
                 // 必须 kill 上一个补间：退出观战时的淡出还没跑完就重新进入，
                 // 两个补间会同时改 self_modulate:a，表现为闪一下然后一直亮着。
@@ -137,6 +145,11 @@ public static class HandSelectionView
                         backstop.Visible = false;
                     }));
                 }
+            }
+            else if (visible && !_warnedBackstop)
+            {
+                _warnedBackstop = true;
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] selection backstop node missing; screen will not dim");
             }
 
             if (ConfirmButtonField?.GetValue(hand) is NConfirmButton button)
