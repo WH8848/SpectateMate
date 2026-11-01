@@ -48,11 +48,9 @@ internal static class HandMirror
         public NHandCardHolder Holder = null!;
         public NCard Card = null!;
         public CardModel Model = null!;
-        public ulong StartedMs;
     }
 
     private static readonly List<SettlingCard> Settling = new();
-    private const float SettleTimeoutMs = 4000f;
 
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
@@ -411,7 +409,6 @@ internal static class HandMirror
                 Holder = holder,
                 Card = card,
                 Model = card.Model!,
-                StartedMs = Godot.Time.GetTicksMsec(),
             });
         }
         catch
@@ -432,8 +429,6 @@ internal static class HandMirror
             return;
         }
 
-        ulong now = Godot.Time.GetTicksMsec();
-
         foreach (SettlingCard item in Settling.ToArray())
         {
             if (!GodotObject.IsInstanceValid(item.Card) || !GodotObject.IsInstanceValid(item.Holder))
@@ -453,17 +448,24 @@ internal static class HandMirror
                 destination = null;
             }
 
-            if (destination is PileType.Discard or PileType.Exhaust or PileType.Draw)
+            switch (destination)
             {
-                Settling.Remove(item);
-                FlyToPile(item, destination.Value);
-                continue;
-            }
+                case PileType.Discard:
+                case PileType.Exhaust:
+                case PileType.Draw:
+                    Settling.Remove(item);
+                    FlyToPile(item, destination.Value);
+                    break;
 
-            if (now - item.StartedMs > SettleTimeoutMs)
-            {
-                Settling.Remove(item);
-                DestroyHolder(item.Holder);
+                case PileType.Hand:
+                    // 牌被打消 / 退回手牌：手牌镜像会重新建出这张牌，
+                    // 播放区这一份直接回收，否则会重影。
+                    Settling.Remove(item);
+                    DestroyHolder(item.Holder);
+                    break;
+
+                // Play / None：他还在选择目标或结算中，停在播放区继续等。
+                // 这里刻意不设超时——「飞溅」这类需要选目标的牌本来就要停留很久。
             }
         }
     }
