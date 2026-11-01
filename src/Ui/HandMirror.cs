@@ -58,20 +58,6 @@ internal static class HandMirror
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
 
-    private static readonly System.Reflection.FieldInfo? SelectionHeaderField =
-        typeof(NPlayerHand).GetField(
-            "_selectionHeader",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-
-    private static readonly System.Reflection.FieldInfo? ConfirmButtonField =
-        typeof(NPlayerHand).GetField(
-            "_selectModeConfirmButton",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-
-    private static readonly System.Reflection.FieldInfo? SelectModeBackstopField =
-        typeof(NPlayerHand).GetField(
-            "_selectModeBackstop",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     private static bool _vanillaHidden;
     private static Color _savedModulate = Colors.White;
     private static StringName _key = string.Empty;
@@ -206,154 +192,17 @@ internal static class HandMirror
     /// </summary>
     public static void ApplyHandSelection(Func<CardModel, bool>? filter)
     {
-        try
-        {
-            bool changed = false;
-
-            foreach (NHandCardHolder holder in Holders)
-            {
-                if (holder == null || !GodotObject.IsInstanceValid(holder))
-                {
-                    continue;
-                }
-
-                CardModel? model = holder.CardNode?.Model;
-                bool visible = filter == null || (model != null && filter(model));
-
-                if (holder.Visible != visible)
-                {
-                    holder.Visible = visible;
-                    changed = true;
-                }
-            }
-
-            if (changed && _lastHand != null && GodotObject.IsInstanceValid(_lastHand))
-            {
-                _lastHand.ForceRefreshCardIndices();
-            }
-        }
-        catch (Exception e)
-        {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand selection filter failed: {e.Message}");
-        }
+        HandSelectionView.ApplyFilter(_lastHand, Holders, filter);
     }
 
-    /// <summary>
-    /// 复刻原版手牌选择模式的顶部提示与确认按钮。
-    /// 这两个控件本来就挂在 NPlayerHand 上（_selectionHeader / _selectModeConfirmButton），
-    /// 观战时直接用它们，位置和样式自然一致；按钮只做视觉，输入被禁掉。
-    /// </summary>
     public static void ApplySelectionUi(bool visible, string? prompt)
     {
-        try
-        {
-            NPlayerHand? hand = _lastHand;
-            if (hand == null || !GodotObject.IsInstanceValid(hand))
-            {
-                return;
-            }
-
-            if (SelectionHeaderField?.GetValue(hand) is MegaRichTextLabel header)
-            {
-                header.Visible = visible;
-
-                if (visible && !string.IsNullOrEmpty(prompt))
-                {
-                    header.Text = "[center]" + prompt + "[/center]";
-                }
-            }
-
-            // 原版选牌时会淡入一层全屏遮罩（_selectModeBackstop self_modulate:a -> 1），
-            // 画面整体变暗。观战时同样要有，否则像没进入选择状态。
-            if (SelectModeBackstopField?.GetValue(hand) is Control backstop)
-            {
-                backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
-
-                // 必须 kill 上一个补间：退出观战时的淡出还没跑完就重新进入，
-                // 两个补间会同时改 self_modulate:a，表现为闪一下然后一直亮着。
-                _backstopTween?.Kill();
-                _backstopTween = null;
-
-                if (visible)
-                {
-                    // 与原版一致：从透明开始，0.2 秒淡入到不透明。
-                    if (!backstop.Visible)
-                    {
-                        Color from = backstop.SelfModulate;
-                        from.A = 0f;
-                        backstop.SelfModulate = from;
-                    }
-
-                    backstop.Visible = true;
-                    _backstopTween = backstop.CreateTween();
-                    _backstopTween.TweenProperty(backstop, "self_modulate:a", 1f, 0.2f)
-                        .SetTrans(Tween.TransitionType.Cubic)
-                        .SetEase(Tween.EaseType.Out);
-                }
-                else
-                {
-                    _backstopTween = backstop.CreateTween();
-                    _backstopTween.TweenProperty(backstop, "self_modulate:a", 0f, 0.2f)
-                        .SetTrans(Tween.TransitionType.Cubic)
-                        .SetEase(Tween.EaseType.Out);
-                    _backstopTween.TweenCallback(Callable.From(() =>
-                    {
-                        Color zero = backstop.SelfModulate;
-                        zero.A = 0f;
-                        backstop.SelfModulate = zero;
-                        backstop.Visible = false;
-                    }));
-                }
-            }
-
-            if (ConfirmButtonField?.GetValue(hand) is NConfirmButton button)
-            {
-                // 确认按钮直接在观战期间隐藏。
-                // 之前试过 Enable + MouseFilter.Ignore + SetProcessInput(false)，
-                // 但他的点击走的是子节点 hitbox，拦不住，出现过「观战者能点确认」的 bug。
-                // 按钮没有存在的必要：观战者本来就不能替他选。
-                button.Visible = !visible;
-                button.Disable();
-
-                if (visible)
-                {
-                    button.MouseFilter = Control.MouseFilterEnum.Ignore;
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] selection ui failed: {e.Message}");
-        }
+        HandSelectionView.ApplyChrome(_lastHand, visible, prompt);
     }
 
-    /// <summary>退出选择模式：所有牌恢复可见。</summary>
     public static void ClearHandSelection()
     {
-        try
-        {
-            bool changed = false;
-
-            foreach (NHandCardHolder holder in Holders)
-            {
-                if (holder == null || !GodotObject.IsInstanceValid(holder) || holder.Visible)
-                {
-                    continue;
-                }
-
-                holder.Visible = true;
-                changed = true;
-            }
-
-            if (changed && _lastHand != null && GodotObject.IsInstanceValid(_lastHand))
-            {
-                _lastHand.ForceRefreshCardIndices();
-            }
-        }
-        catch
-        {
-            // ignored
-        }
+        HandSelectionView.Clear(_lastHand, Holders);
     }
 
     private static ModelId? _hoverId;
@@ -429,7 +278,6 @@ internal static class HandMirror
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
     private static int _lastEnergy = int.MinValue;
-    private static Tween? _backstopTween;
 
     /// <summary>
     /// 队友能量变化时刷新所有镜像卡的费用颜色。
