@@ -101,6 +101,8 @@ public static class SpectateChoice
         _handUiShown = false;
         HandMirror.ClearHandSelection();
         HandMirror.ClearHighlight();
+
+        // 幂等清理：即使某次显示过遮罩，这里也一定撤掉。
         HandMirror.ApplySelectionUi(visible: false, null);
     }
 
@@ -178,18 +180,13 @@ public static class SpectateChoice
 
         if (active)
         {
+            // 只保留「不可选的牌隐藏」这一层。
+            // 黑幕和顶部提示按需求取消，观战时不再显示。
             HandMirror.ApplyHandSelection(_handFilter);
-
-            if (!_handUiShown)
-            {
-                // 复刻原版：顶部提示 + 确认按钮（按钮仅视觉）。
-                HandMirror.ApplySelectionUi(visible: true, _handPrompt);
-                _handUiShown = true;
-            }
         }
         else if (_handUiShown)
         {
-            // 只是暂时不可见（退出观战、切目标），保留状态以便回来时重新套用。
+            // 收尾：确保任何残留的遮罩/提示都被撤掉，并恢复全部手牌。
             HandMirror.ApplySelectionUi(visible: false, null);
             _handUiShown = false;
             HandMirror.ClearHandSelection();
