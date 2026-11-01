@@ -16,6 +16,8 @@
     <!-- 创意工坊 RitsuLib（运行时版本，与游戏加载的 0.6.10 / API 0.111.0 完全一致） -->
     <RitsuLibDir>E:\SteamLibrary\steamapps\workshop\content\2868840\3747602295</RitsuLibDir>
     <RitsuLibApi>0.111.0</RitsuLibApi>
+    <!-- 游戏内显示的 mod 目录名（清单里的 name 才是列表显示名） -->
+    <DeployFolder>（功能）右键队友头像观战</DeployFolder>
   </PropertyGroup>
 
   <ItemGroup>
@@ -50,9 +52,9 @@
   </ItemGroup>
 
   <Target Name="DeployMod" AfterTargets="Build">
-    <MakeDir Directories="$(ModDir)\$(AssemblyName)" />
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModDir)\$(AssemblyName)" />
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\mod_manifest.json" DestinationFolder="$(ModDir)\$(AssemblyName)" Condition="Exists('$(MSBuildProjectDirectory)\mod_manifest.json')" />
-    <Message Text="Deployed $(AssemblyName).dll -> $(ModDir)\$(AssemblyName)" Importance="high" />
+    <MakeDir Directories="$(ModDir)\$(DeployFolder)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModDir)\$(DeployFolder)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\mod_manifest.json" DestinationFolder="$(ModDir)\$(DeployFolder)" Condition="Exists('$(MSBuildProjectDirectory)\mod_manifest.json')" />
+    <Message Text="Deployed $(AssemblyName).dll -> $(ModDir)\$(DeployFolder)" Importance="high" />
   </Target>
 </Project>
