@@ -40,6 +40,18 @@ internal static class HandMirror
     private static readonly List<NHandCardHolder> Detached = new();
     private static readonly Dictionary<NCard, Tween> FlightTweens = new();
 
+    /// <summary>已飞入播放区、正在等待最终去向的牌。</summary>
+    private sealed class SettlingCard
+    {
+        public NHandCardHolder Holder = null!;
+        public NCard Card = null!;
+        public CardModel Model = null!;
+        public ulong StartedMs;
+    }
+
+    private static readonly List<SettlingCard> Settling = new();
+    private const float SettleTimeoutMs = 4000f;
+
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
     private static bool _vanillaHidden;
@@ -109,6 +121,8 @@ internal static class HandMirror
                 return;
             }
 
+            UpdateSettling();
+
             StringName key = BuildKey(cards);
             if (key != _key)
             {
@@ -164,6 +178,13 @@ internal static class HandMirror
         }
 
         Detached.Clear();
+
+        foreach (SettlingCard settling in Settling.ToArray())
+        {
+            DestroyHolder(settling.Holder);
+        }
+
+        Settling.Clear();
         FreeHolders();
 
         if (_layer != null && GodotObject.IsInstanceValid(_layer))
@@ -305,7 +326,6 @@ internal static class HandMirror
             // 复刻 NCard.AnimCardToPlayPile：飞到播放区、缩放到 0.8、0.2 秒、不淡出。
             // 之后短暂停留（相当于原版的结算过程），再飞向弃牌堆并移除。
             Vector2 playTarget = PlayTargetGlobal(card);
-            Vector2 discardTarget = PlayTargetGlobal(card, PileType.Discard);
 
             Tween tween = card.CreateTween();
 
@@ -317,17 +337,8 @@ internal static class HandMirror
                 .SetTrans(Tween.TransitionType.Cubic)
                 .SetEase(Tween.EaseType.Out);
 
-            tween.TweenInterval(PlayHoldSeconds);
+            tween.TweenCallback(Callable.From(() => BeginSettling(holder, card)));
 
-            tween.TweenProperty(card, "global_position", discardTarget, PlaySettleSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.In);
-            tween.Parallel()
-                .TweenProperty(card, "scale", Vector2.One * 0.45f, PlaySettleSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.In);
-
-            tween.TweenCallback(Callable.From(() => DestroyHolder(holder)));
             FlightTweens[card] = tween;
         }
         catch (Exception e)
@@ -366,10 +377,111 @@ internal static class HandMirror
         }
     }
 
-    private static void DestroyHolder(NHandCardHolder holder)
+    private static void BeginSettling(NHandCardHolder holder, NCard card)
     {
         try
         {
+            if (holder == null || !GodotObject.IsInstanceValid(holder) || card == null || !GodotObject.IsInstanceValid(card))
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            Settling.Add(new SettlingCard
+            {
+                Holder = holder,
+                Card = card,
+                Model = card.Model!,
+                StartedMs = Godot.Time.GetTicksMsec(),
+            });
+        }
+        catch
+        {
+            DestroyHolder(holder);
+        }
+    }
+
+    /// <summary>
+    /// 跟着 CardModel.Pile 的真实归属收尾：卡被打出后会先进入 Play，
+    /// 结算完成才转到 Discard / Exhaust / Draw。这里等到它落定，再飞向对应牌堆，
+    /// 而不是一律飞弃牌堆。
+    /// </summary>
+    private static void UpdateSettling()
+    {
+        if (Settling.Count == 0)
+        {
+            return;
+        }
+
+        ulong now = Godot.Time.GetTicksMsec();
+
+        foreach (SettlingCard item in Settling.ToArray())
+        {
+            if (!GodotObject.IsInstanceValid(item.Card) || !GodotObject.IsInstanceValid(item.Holder))
+            {
+                Settling.Remove(item);
+                continue;
+            }
+
+            PileType? destination = null;
+
+            try
+            {
+                destination = item.Model.Pile?.Type;
+            }
+            catch
+            {
+                destination = null;
+            }
+
+            if (destination is PileType.Discard or PileType.Exhaust or PileType.Draw)
+            {
+                Settling.Remove(item);
+                FlyToPile(item, destination.Value);
+                continue;
+            }
+
+            if (now - item.StartedMs > SettleTimeoutMs)
+            {
+                Settling.Remove(item);
+                DestroyHolder(item.Holder);
+            }
+        }
+    }
+
+    private static void FlyToPile(SettlingCard item, PileType pile)
+    {
+        try
+        {
+            Vector2 target = pile.GetTargetPosition(item.Card);
+
+            Tween tween = item.Card.CreateTween();
+            tween.TweenProperty(item.Card, "global_position", target, PlaySettleSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.In);
+            tween.Parallel()
+                .TweenProperty(item.Card, "scale", Vector2.One * 0.45f, PlaySettleSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.In);
+            tween.TweenCallback(Callable.From(() => DestroyHolder(item.Holder)));
+
+            FlightTweens[item.Card] = tween;
+        }
+        catch
+        {
+            DestroyHolder(item.Holder);
+        }
+    }
+
+    private static void DestroyHolder(NHandCardHolder? holder)
+    {
+        try
+        {
+            if (holder == null)
+            {
+                return;
+            }
+
             Detached.Remove(holder);
 
             if (holder == null || !GodotObject.IsInstanceValid(holder))
