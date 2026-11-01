@@ -320,6 +320,12 @@ internal static class HandMirror
     /// </summary>
     public static void HighlightHovered(ModelId? id)
     {
+        if (Holders.Count == 0)
+        {
+            // 镜像还没建好，不能写缓存，否则重建后会被当成「没变化」跳过。
+            return;
+        }
+
         if (id == _hoverId)
         {
             return;
@@ -479,6 +485,7 @@ internal static class HandMirror
 
         _key = key;
         _active = true;
+        _hoverId = null;
 
         // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
         hand.ForceRefreshCardIndices();

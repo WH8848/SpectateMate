@@ -200,6 +200,8 @@ public static class SpectateChoice
                 return;
             }
 
+            _hoverId = null;
+
             DisableInput(_screen as Node);
             ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: {_mode} ({DescribeCount()})");
 
@@ -308,6 +310,13 @@ public static class SpectateChoice
     /// </summary>
     public static void HighlightHovered(ModelId? id)
     {
+        // 界面还没建出来时不能写缓存：否则等界面创建后，id 与缓存相同会被直接跳过，
+        // 表现为「悬停高亮永远不出现」。
+        if (_screen is not Node root || !GodotObject.IsInstanceValid(root))
+        {
+            return;
+        }
+
         if (id == _hoverId)
         {
             return;
@@ -317,10 +326,6 @@ public static class SpectateChoice
 
         try
         {
-            if (_screen is not Node root || !GodotObject.IsInstanceValid(root))
-            {
-                return;
-            }
 
             foreach (Node node in root.FindChildren("*", nameof(NCardHolder), true, false))
             {
