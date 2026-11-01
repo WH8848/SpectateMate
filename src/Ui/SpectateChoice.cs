@@ -73,6 +73,20 @@ public static class SpectateChoice
         _handOwner = player;
         _handFilter = filter;
         EnsureSubscribed();
+
+        string prompt = string.Empty;
+
+        try
+        {
+            prompt = prefs.Prompt.GetFormattedText();
+        }
+        catch
+        {
+            // 提示文字拿不到就不显示，不影响过滤。
+        }
+
+        // 复刻原版：顶部提示 + 确认按钮（按钮仅视觉）。
+        HandMirror.ApplySelectionUi(visible: true, prompt);
     }
 
     /// <summary>他完成选择（结果已送达）→ 退出选择模式。</summary>
@@ -82,6 +96,7 @@ public static class SpectateChoice
         _handFilter = null;
         _handOwner = null;
         HandMirror.ClearHandSelection();
+        HandMirror.ApplySelectionUi(visible: false, null);
     }
 
     /// <summary>

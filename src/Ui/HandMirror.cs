@@ -10,7 +10,9 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Nodes.Pooling;
 
@@ -55,6 +57,16 @@ internal static class HandMirror
 
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
+
+    private static readonly System.Reflection.FieldInfo? SelectionHeaderField =
+        typeof(NPlayerHand).GetField(
+            "_selectionHeader",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    private static readonly System.Reflection.FieldInfo? ConfirmButtonField =
+        typeof(NPlayerHand).GetField(
+            "_selectModeConfirmButton",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     private static bool _vanillaHidden;
     private static Color _savedModulate = Colors.White;
     private static StringName _key = string.Empty;
@@ -185,6 +197,52 @@ internal static class HandMirror
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] hand selection filter failed: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 复刻原版手牌选择模式的顶部提示与确认按钮。
+    /// 这两个控件本来就挂在 NPlayerHand 上（_selectionHeader / _selectModeConfirmButton），
+    /// 观战时直接用它们，位置和样式自然一致；按钮只做视觉，输入被禁掉。
+    /// </summary>
+    public static void ApplySelectionUi(bool visible, string? prompt)
+    {
+        try
+        {
+            NPlayerHand? hand = _lastHand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            {
+                return;
+            }
+
+            if (SelectionHeaderField?.GetValue(hand) is MegaRichTextLabel header)
+            {
+                header.Visible = visible;
+
+                if (visible && !string.IsNullOrEmpty(prompt))
+                {
+                    header.Text = "[center]" + prompt + "[/center]";
+                }
+            }
+
+            if (ConfirmButtonField?.GetValue(hand) is NConfirmButton button)
+            {
+                if (visible)
+                {
+                    // 只做视觉：观战者不能替他确认。
+                    button.Enable();
+                    button.MouseFilter = Control.MouseFilterEnum.Ignore;
+                    button.SetProcessInput(false);
+                }
+                else
+                {
+                    button.Disable();
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] selection ui failed: {e.Message}");
         }
     }
 
