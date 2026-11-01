@@ -202,6 +202,19 @@ public static class SpectateChoice
 
             DisableInput(_screen as Node);
             ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: {_mode} ({DescribeCount()})");
+
+            // 诊断：界面建出来了但卡片是空的，需要区分「没填充」和「填充了但不可见」。
+            Node? probeRoot = _screen as Node;
+            if (probeRoot != null)
+            {
+                int cards = probeRoot.FindChildren("*", nameof(NCard), true, false).Count;
+                int holders = probeRoot.FindChildren("*", nameof(NCardHolder), true, false).Count;
+                bool visible = probeRoot is CanvasItem ci && ci.Visible;
+                Color mod = probeRoot is CanvasItem ci2 ? ci2.Modulate : Colors.White;
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] choice peek: cards={cards} holders={holders} " +
+                    $"visible={visible} modulate={mod}");
+            }
         }
         catch (Exception e)
         {
@@ -219,7 +232,16 @@ public static class SpectateChoice
 
             case Mode.CombatPile when _pile != null && _prefs != null:
             {
-                NCombatPileCardSelectScreen screen = NCombatPileCardSelectScreen.Create(_pile!, _prefs.Value, _filter);
+                // 空牌堆时游戏自己会立即完成选择；这里若照常创建，
+                // _Ready 里的 _pile.Cards.First() 会抛 InvalidOperationException，
+                // 导致界面停在空白状态。
+                if (_pile.Cards.Count == 0)
+                {
+                    ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: pile {_pile.Type} empty, skip");
+                    return null;
+                }
+
+                NCombatPileCardSelectScreen screen = NCombatPileCardSelectScreen.Create(_pile, _prefs.Value, _filter);
                 NOverlayStack.Instance?.Push(screen);
                 return screen;
             }
