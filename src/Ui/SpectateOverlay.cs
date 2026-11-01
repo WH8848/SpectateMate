@@ -218,6 +218,7 @@ public static class SpectateOverlay
             _hoverLine = null;
             _target = null;
             _handKey = string.Empty;
+            SpectateChoice.Reset();
             SpectateUi.SetInteraction(true);
             SpectateUi.Apply(null);
             SpectateUi.RestoreOwnHandState();
@@ -364,6 +365,17 @@ public static class SpectateOverlay
             if (_status != null)
             {
                 NetScreenType screen = input != null ? input.GetScreenType(_target.NetId) : NetScreenType.None;
+
+                // 他正在选牌就镜像一份只读的原版界面。
+                try
+                {
+                    SpectateChoice.Tick(_target, screen);
+                }
+                catch (Exception e)
+                {
+                    ModEntry.Log.Warn($"[{ModEntry.ModId}] choice tick failed: {e.Message}");
+                }
+
                 string screenText = screen == NetScreenType.Room && cs != null ? "战斗中" : ScreenName(screen);
                 int relics = SafeCount(() => _target.Relics.Count);
                 int potions = SafeCount(() => System.Linq.Enumerable.Count(_target.Potions));

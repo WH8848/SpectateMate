@@ -33,6 +33,9 @@ public static class ModEntry
             patcher.RegisterPatch<HandPlayBlockPatch>();
             patcher.RegisterPatch<AvatarOrderPatch>();
             patcher.RegisterPatch<ActiveHoldersPatch>();
+
+            // CardSelectCmd 是 static class，无法作为 RitsuLib 的泛型补丁目标，改用 Harmony。
+            ChoiceProbe.Install();
             RitsuLibFramework.ApplyRequiredPatcher(patcher, OnRequiredPatchFailed);
 
             RitsuLibFramework.SubscribeLifecycle<RunEndedEvent>(_ => SpectateOverlay.CloseAll());
