@@ -48,13 +48,12 @@ internal static class HandMirror
     /// <summary>已飞入播放区、正在等待最终去向的牌。</summary>
     private sealed class SettlingCard
     {
-        public NHandCardHolder? Holder;
+        public NHandCardHolder Holder = null!;
         public NCard Card = null!;
         public CardModel Model = null!;
     }
 
     private static readonly List<SettlingCard> Settling = new();
-    private static readonly List<CardModel> PendingSettle = new();
 
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
@@ -497,27 +496,6 @@ internal static class HandMirror
         _hoverId = null;
         _lastEnergy = int.MinValue;
 
-        // 记下还没落定的牌（他可能正停在选牌界面，牌悬在播放区）。
-        // 退出观战会销毁所有节点，但重新观战时要把这几张还原回去。
-        PendingSettle.Clear();
-
-        foreach (SettlingCard settling in Settling.ToArray())
-        {
-            try
-            {
-                if (settling.Model != null && settling.Model.Pile?.Type == PileType.Play)
-                {
-                    PendingSettle.Add(settling.Model);
-                }
-            }
-            catch
-            {
-                // ignored
-            }
-
-            DestroyHolder(settling.Holder);
-        }
-
         Settling.Clear();
         FreeHolders();
 
@@ -596,8 +574,6 @@ internal static class HandMirror
         // 必须在 ForceRefreshCardIndices 之后执行：_active 为 false 的瞬间
         // RefreshLayout 会把原生编号写回来。
         HideVanillaLabels();
-
-        RestorePendingSettle(hand, layer);
 
         Control? ctr = ContainerOf(hand);
         Diag(
@@ -772,7 +748,7 @@ internal static class HandMirror
 
         foreach (SettlingCard item in Settling.ToArray())
         {
-            if (!GodotObject.IsInstanceValid(item.Card))
+            if (!GodotObject.IsInstanceValid(item.Card) || !GodotObject.IsInstanceValid(item.Holder))
             {
                 Settling.Remove(item);
                 continue;
@@ -904,58 +880,6 @@ internal static class HandMirror
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
             DestroyHolder(item.Holder);
-        }
-    }
-
-    /// <summary>
-    /// 重新观战时，把他仍然悬在播放区的牌还原回去。
-    ///
-    /// 他停在选牌界面时（杂技、飞溅、涅奥之怒……），打出的那张牌 Pile 一直是 Play，
-    /// 我们退出观战会销毁所有节点，重新进来就只剩空荡荡的播放区。
-    /// 这里按 CardModel 重建一张裸卡放到播放位置，并重新纳入 Settling 等待结算。
-    /// </summary>
-    private static void RestorePendingSettle(NPlayerHand hand, Control layer)
-    {
-        if (PendingSettle.Count == 0 || layer == null || !GodotObject.IsInstanceValid(layer))
-        {
-            return;
-        }
-
-        foreach (CardModel model in PendingSettle.ToArray())
-        {
-            try
-            {
-                // 期间可能已经结算完，落到别的牌堆了。
-                if (model.Pile?.Type != PileType.Play)
-                {
-                    PendingSettle.Remove(model);
-                    continue;
-                }
-
-                NCard? card = NCard.Create(model);
-                if (card == null)
-                {
-                    continue;
-                }
-
-                card.Visibility = ModelVisibility.Visible;
-                card.UpdateVisuals(PileType.Hand, CardPreviewMode.Normal);
-
-                layer.AddChild(card);
-                card.GlobalPosition = PlayTargetGlobal(card);
-                card.Scale = Vector2.One * 0.8f;
-
-                Settling.Add(new SettlingCard
-                {
-                    Holder = null,
-                    Card = card,
-                    Model = model,
-                });
-            }
-            catch (Exception e)
-            {
-                ModEntry.Log.Warn($"[{ModEntry.ModId}] restore settling card failed: {e.Message}");
-            }
         }
     }
 
