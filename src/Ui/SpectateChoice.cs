@@ -9,6 +9,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace SpectateMate.Ui;
 
@@ -43,6 +44,12 @@ public static class SpectateChoice
     private static Player? _owner;
     private static IOverlayScreen? _screen;
 
+    // 手牌选择模式（后空翻、计算下注这类）：不弹界面，只是把手牌过滤成可选的那些。
+    private static bool _handSelecting;
+    private static Func<CardModel, bool>? _handFilter;
+    private static Player? _handOwner;
+    private static bool _subscribed;
+
     public static void RememberChooseACard(IReadOnlyList<CardModel> cards, bool canSkip, Player player)
     {
         _mode = Mode.ChooseACard;
@@ -58,6 +65,54 @@ public static class SpectateChoice
         _prefs = prefs;
         _filter = filter;
         _owner = player;
+    }
+
+    public static void BeginHandSelection(Player player, CardSelectorPrefs prefs, Func<CardModel, bool>? filter)
+    {
+        _handSelecting = true;
+        _handOwner = player;
+        _handFilter = filter;
+        EnsureSubscribed();
+    }
+
+    /// <summary>他完成选择（结果已送达）→ 退出选择模式。</summary>
+    public static void EndHandSelection()
+    {
+        _handSelecting = false;
+        _handFilter = null;
+        _handOwner = null;
+        HandMirror.ClearHandSelection();
+    }
+
+    /// <summary>
+    /// 订阅「收到远端选择结果」事件。这是唯一可靠的结束信号：
+    /// FromHand 在本地的非 owner 分支只是 await WaitForRemoteChoice，
+    /// 而 Harmony 的 Postfix 在方法启动时就会执行，拿不到完成时机。
+    /// </summary>
+    private static void EnsureSubscribed()
+    {
+        if (_subscribed)
+        {
+            return;
+        }
+
+        try
+        {
+            RunManager.Instance.PlayerChoiceSynchronizer.PlayerChoiceReceived += OnRemoteChoiceReceived;
+            _subscribed = true;
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] choice subscribe failed: {e.Message}");
+        }
+    }
+
+    private static void OnRemoteChoiceReceived(Player player, uint choiceId, NetPlayerChoiceResult result)
+    {
+        if (_handOwner != null && player.NetId == _handOwner.NetId)
+        {
+            EndHandSelection();
+        }
     }
 
     /// <summary>每拍调用：他在选牌就打开只读界面，选完就关掉。</summary>
@@ -77,6 +132,27 @@ public static class SpectateChoice
         else
         {
             Close();
+        }
+
+        SyncHandSelection(target);
+    }
+
+    private static void SyncHandSelection(Player? target)
+    {
+        bool active =
+            _handSelecting &&
+            target != null &&
+            _handOwner != null &&
+            _handOwner.NetId == target.NetId;
+
+        if (active)
+        {
+            HandMirror.ApplyHandSelection(_handFilter);
+        }
+        else if (_handSelecting)
+        {
+            // 观战目标换了，退出选择模式。
+            EndHandSelection();
         }
     }
 
@@ -186,5 +262,6 @@ public static class SpectateChoice
     public static void Reset()
     {
         Close();
+        EndHandSelection();
     }
 }

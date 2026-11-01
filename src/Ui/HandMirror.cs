@@ -149,6 +149,74 @@ internal static class HandMirror
     /// True when leaving spectate (give the real cards back). False while merely
     /// emptied (teammate played everything) — restoring there flashed OUR cards.
     /// </param>
+    /// <summary>
+    /// 复刻原版手牌选择模式的视觉：不符合 filter 的牌直接隐藏。
+    /// NPlayerHand.ActiveHolders 过滤 IsVisibleInTree()，所以隐藏的牌会自动
+    /// 退出布局，其余牌由 RefreshLayout 重新收拢 —— 与被观战者看到的一致。
+    /// </summary>
+    public static void ApplyHandSelection(Func<CardModel, bool>? filter)
+    {
+        try
+        {
+            bool changed = false;
+
+            foreach (NHandCardHolder holder in Holders)
+            {
+                if (holder == null || !GodotObject.IsInstanceValid(holder))
+                {
+                    continue;
+                }
+
+                CardModel? model = holder.CardNode?.Model;
+                bool visible = filter == null || (model != null && filter(model));
+
+                if (holder.Visible != visible)
+                {
+                    holder.Visible = visible;
+                    changed = true;
+                }
+            }
+
+            if (changed && _lastHand != null && GodotObject.IsInstanceValid(_lastHand))
+            {
+                _lastHand.ForceRefreshCardIndices();
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand selection filter failed: {e.Message}");
+        }
+    }
+
+    /// <summary>退出选择模式：所有牌恢复可见。</summary>
+    public static void ClearHandSelection()
+    {
+        try
+        {
+            bool changed = false;
+
+            foreach (NHandCardHolder holder in Holders)
+            {
+                if (holder == null || !GodotObject.IsInstanceValid(holder) || holder.Visible)
+                {
+                    continue;
+                }
+
+                holder.Visible = true;
+                changed = true;
+            }
+
+            if (changed && _lastHand != null && GodotObject.IsInstanceValid(_lastHand))
+            {
+                _lastHand.ForceRefreshCardIndices();
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     public static void Hide(NPlayerHand? hand, bool restoreVanilla = true)
     {
         hand ??= _lastHand;

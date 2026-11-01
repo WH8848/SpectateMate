@@ -77,11 +77,45 @@ internal static class ChoiceProbe
             {
                 ModEntry.Log.Warn($"[{ModEntry.ModId}] choice probe: FromCombatPile not found");
             }
+
+            // 弃牌 / 烧牌 / 手牌升级都汇聚到这里（FromHandForDiscard 只是转调）。
+            // 它不弹覆盖层界面，而是让手牌区进入选择模式，所以只能镜像手牌的可见性。
+            MethodInfo? hand = AccessTools.Method(
+                typeof(CardSelectCmd),
+                "FromHand",
+                new[]
+                {
+                    typeof(PlayerChoiceContext),
+                    typeof(Player),
+                    typeof(CardSelectorPrefs),
+                    typeof(Func<CardModel, bool>),
+                    typeof(AbstractModel),
+                });
+
+            if (hand != null)
+            {
+                _harmony.Patch(hand, prefix: new HarmonyMethod(typeof(ChoiceProbe), nameof(HandPrefix)));
+                ModEntry.Log.Info($"[{ModEntry.ModId}] choice probe: FromHand hooked");
+            }
+            else
+            {
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] choice probe: FromHand not found");
+            }
         }
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] choice probe install failed: {e.Message}");
         }
+    }
+
+    private static void HandPrefix(
+        PlayerChoiceContext context,
+        Player player,
+        CardSelectorPrefs prefs,
+        Func<CardModel, bool>? filter,
+        AbstractModel? source)
+    {
+        SpectateChoice.BeginHandSelection(player, prefs, filter);
     }
 
     private static void ChoosePrefix(PlayerChoiceContext context, IReadOnlyList<CardModel> cards, Player player, bool canSkip)
