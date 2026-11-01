@@ -59,6 +59,8 @@
     <MakeDir Directories="$(ModDir)\$(DeployFolder)" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModDir)\$(DeployFolder)" />
     <Copy SourceFiles="$(MSBuildProjectDirectory)\mod_manifest.json" DestinationFolder="$(ModDir)\$(DeployFolder)" Condition="Exists('$(MSBuildProjectDirectory)\mod_manifest.json')" />
+    <!-- 部署 PDB：日志里的堆栈才会带行号，否则异常只有方法名无法定位 -->
+    <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb" DestinationFolder="$(ModDir)\$(DeployFolder)" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
     <Message Text="Deployed $(AssemblyName).dll -> $(ModDir)\$(DeployFolder)" Importance="high" />
   </Target>
 </Project>

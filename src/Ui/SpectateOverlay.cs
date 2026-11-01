@@ -361,9 +361,35 @@ public static class SpectateOverlay
             ModEntry.Log.Warn($"[{ModEntry.ModId}] tick failed: {e.Message}");
         }
 
-        PeerInputSynchronizer? input = RunManager.Instance.InputSynchronizer;
-            PlayerCombatState? cs = _target.PlayerCombatState;
-            Creature? creature = _target.Creature;
+        PeerInputSynchronizer? input = null;
+        PlayerCombatState? cs = null;
+        Creature? creature = null;
+
+        try
+        {
+            input = RunManager.Instance.InputSynchronizer;
+            cs = _target.PlayerCombatState;
+            creature = _target.Creature;
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] target read failed: {e.Message}");
+        }
+
+        // 选牌镜像必须最先驱动：下面的 UI 刷新一旦抛异常，整段都会被跳过，
+        // 表现为「他打杂技时观战侧完全没反应」。
+        try
+        {
+            NetScreenType screenNow = input != null
+                ? input.GetScreenType(_target.NetId)
+                : NetScreenType.None;
+
+            SpectateChoice.Tick(_target, screenNow);
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] choice tick failed: {e.Message}");
+        }
 
             if (_title != null)
             {
@@ -395,17 +421,6 @@ public static class SpectateOverlay
             if (_status != null)
             {
                 NetScreenType screen = input != null ? input.GetScreenType(_target.NetId) : NetScreenType.None;
-
-                // 他正在选牌就镜像一份只读的原版界面。
-                try
-                {
-                    SpectateChoice.Tick(_target, screen);
-                }
-                catch (Exception e)
-                {
-                    ModEntry.Log.Warn($"[{ModEntry.ModId}] choice tick failed: {e.Message}");
-                }
-
                 string screenText = screen == NetScreenType.Room && cs != null ? "战斗中" : ScreenName(screen);
                 int relics = SafeCount(() => _target.Relics.Count);
                 int potions = SafeCount(() => System.Linq.Enumerable.Count(_target.Potions));
