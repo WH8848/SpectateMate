@@ -245,27 +245,18 @@ internal static class HandMirror
         // that container gets its Modulate zeroed to hide the vanilla cards, and
         // anything parented inside it would vanish along with them.
         Node parent = hand;
-        Vector2 origin = Vector2.Zero;
-        Vector2 size = hand.Size;
-
-        if (container != null)
-        {
-            parent = hand;
-            origin = container.Position;
-            size = container.Size;
-        }
 
         if (_layer != null && GodotObject.IsInstanceValid(_layer))
         {
             if (_layer.GetParent() == parent)
             {
-                ApplyLayerBounds(_layer, origin, size);
+                ApplyLayerBounds(_layer, container);
                 return _layer;
             }
 
             _layer.GetParent()?.RemoveChild(_layer);
             parent.AddChild(_layer);
-            ApplyLayerBounds(_layer, origin, size);
+            ApplyLayerBounds(_layer, container);
             return _layer;
         }
 
@@ -275,18 +266,32 @@ internal static class HandMirror
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         parent.AddChild(layer);
-        ApplyLayerBounds(layer, origin, size);
+        ApplyLayerBounds(layer, container);
         _layer = layer;
         return layer;
     }
 
-    private static void ApplyLayerBounds(Control layer, Vector2 origin, Vector2 size)
+    /// <summary>
+    /// Copies the FULL transform of CardHolderContainer, not just its position.
+    /// HandPosHelper returns coordinates in that container's local space, so any
+    /// scale / rotation / pivot the container carries would otherwise be missing
+    /// from the mirror — cards end up slightly offset or wrongly sized.
+    /// </summary>
+    private static void ApplyLayerBounds(Control layer, Control? container)
     {
         layer.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
-        layer.Position = origin;
-        if (size.X > 0f && size.Y > 0f)
+
+        if (container != null && GodotObject.IsInstanceValid(container))
         {
-            layer.Size = size;
+            layer.Position = container.Position;
+            layer.Scale = container.Scale;
+            layer.Rotation = container.Rotation;
+            layer.PivotOffset = container.PivotOffset;
+
+            if (container.Size.X > 0f && container.Size.Y > 0f)
+            {
+                layer.Size = container.Size;
+            }
         }
 
         // Keep the default z-order: a high value here would draw the mirror
