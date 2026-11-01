@@ -372,9 +372,20 @@ public static class SpectateOverlay
 
             if (_vitals != null)
             {
-                string hp = creature == null
-                    ? "HP -"
-                    : $"HP {creature.CurrentHp}/{creature.MaxHp}  格挡 {creature.Block}";
+                // 玩家离开后 Creature 的内部状态可能已失效，直接读会抛
+                // NullReferenceException（日志里那串 refresh error）。
+                string hp;
+
+                try
+                {
+                    hp = creature == null
+                        ? "HP -"
+                        : $"HP {creature.CurrentHp}/{creature.MaxHp}  格挡 {creature.Block}";
+                }
+                catch
+                {
+                    hp = "HP -";
+                }
                 string res = cs == null
                     ? "不在战斗中"
                     : $"能量 {cs.Energy}/{cs.MaxEnergy}  星 {cs.Stars}";

@@ -1154,9 +1154,10 @@ internal static class HandMirror
             return;
         }
 
-        if (!_vanillaHidden)
+        if (!_vanillaHidden || _savedModulate.A <= 0f)
         {
-            _savedModulate = container.Modulate;
+            // 防御：万一保存时容器已经是透明的，恢复时会把它永远留在 0。
+            _savedModulate = container.Modulate.A > 0f ? container.Modulate : Colors.White;
             _vanillaHidden = true;
         }
 
@@ -1165,9 +1166,15 @@ internal static class HandMirror
         container.Modulate = new Color(_savedModulate.R, _savedModulate.G, _savedModulate.B, 0f);
     }
 
-    private static void ShowVanillaNodes(NPlayerHand hand)
+    private static void ShowVanillaNodes(NPlayerHand? hand)
     {
-        Control? container = ContainerOf(hand);
+        // hand 可能已经失效（回主菜单、换场景），必须逐级回退，
+        // 否则容器保持 alpha=0，玩家自己重新进战斗时会看不到手牌。
+        Control? container = ContainerOf(hand)
+            ?? ContainerOf(_lastHand)
+            ?? ContainerOf(SpectateUi.Hand)
+            ?? ContainerOf(NCombatRoom.Instance?.Ui?.Hand);
+
         if (container == null)
         {
             return;
