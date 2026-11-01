@@ -407,11 +407,29 @@ public static class SpectateOverlay
                     HoveredModelData hover = input.GetHoveredModelData(_target.NetId);
 
                 // 只同步悬停，不同步「已选中」，所以用悬停高亮复刻选择时的视觉反馈。
+                // 颜色取被观战者的角色代表色（CharacterModel.NameColor）。
                 try
                 {
                     ModelId? hoveredId = hover.hoveredModelId;
-                    HandMirror.HighlightHovered(hoveredId);
-                    SpectateChoice.HighlightHovered(hoveredId);
+
+                    Color highlight = NCardHighlight.gold;
+
+                    try
+                    {
+                        Color nameColor = _target.Character.NameColor;
+
+                        if (nameColor.A >= 0.5f)
+                        {
+                            highlight = nameColor;
+                        }
+                    }
+                    catch
+                    {
+                        // 拿不到就用默认金色。
+                    }
+
+                    HandMirror.HighlightHovered(hoveredId, highlight);
+                    SpectateChoice.HighlightHovered(hoveredId, highlight);
                 }
                 catch (Exception e)
                 {

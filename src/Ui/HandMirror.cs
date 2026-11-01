@@ -313,12 +313,13 @@ internal static class HandMirror
     }
 
     private static ModelId? _hoverId;
+    private static Color _hoverColor = Colors.Gold;
 
     /// <summary>
     /// 高亮他鼠标正指着的牌。游戏只同步悬停（HoveredModelData），不同步「已选中」，
     /// 所以原版那种选中态做不到；但悬停本来就是选择时最明显的视觉反馈。
     /// </summary>
-    public static void HighlightHovered(ModelId? id)
+    public static void HighlightHovered(ModelId? id, Color color)
     {
         if (Holders.Count == 0)
         {
@@ -326,12 +327,13 @@ internal static class HandMirror
             return;
         }
 
-        if (id == _hoverId)
+        if (id == _hoverId && color == _hoverColor)
         {
             return;
         }
 
         _hoverId = id;
+        _hoverColor = color;
 
         try
         {
@@ -347,7 +349,7 @@ internal static class HandMirror
 
                 if (match)
                 {
-                    card.CardHighlight.Modulate = NCardHighlight.gold;
+                    card.CardHighlight.Modulate = color;
                     card.CardHighlight.AnimShow();
                 }
                 else
