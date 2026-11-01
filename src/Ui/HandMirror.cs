@@ -32,6 +32,8 @@ internal static class HandMirror
 
     private const float SpawnOffsetY = 180f;
     // 与原版 NCard.AnimCardToPlayPile 一致：0.2s、缩放到 0.8
+    private const float PickUpSeconds = 0.08f;
+    private const float PickUpLift = 40f;
     private const float PlayToPileSeconds = 0.2f;
     private const float PlayHoldSeconds = 0.18f;
     private const float PlaySettleSeconds = 0.22f;
@@ -323,12 +325,29 @@ internal static class HandMirror
                 return;
             }
 
-            // 复刻 NCard.AnimCardToPlayPile：飞到播放区、缩放到 0.8、0.2 秒、不淡出。
-            // 之后短暂停留（相当于原版的结算过程），再飞向弃牌堆并移除。
+            // 从 holder 里摘出来变成自由节点：否则飞行的 global_position 会被
+            // holder 的扇形旋转/缩放反算扭曲，路径不是直线。
+            if (_layer != null && GodotObject.IsInstanceValid(_layer))
+            {
+                card.Reparent(_layer, true);   // keep global transform
+            }
+
             Vector2 playTarget = PlayTargetGlobal(card);
+            Vector2 pickedUp = card.GlobalPosition + Vector2.Up * PickUpLift;
 
             Tween tween = card.CreateTween();
 
+            // 伪「拿起」：原版是真实拖拽，这里用一次轻微上抬+放大代替，
+            // 避免卡片从扇形位置凭空飞走。
+            tween.TweenProperty(card, "global_position", pickedUp, PickUpSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.Out);
+            tween.Parallel()
+                .TweenProperty(card, "scale", card.Scale * 1.15f, PickUpSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.Out);
+
+            // 复刻 NCard.AnimCardToPlayPile：飞到播放区、缩放到 0.8、0.2 秒、不淡出。
             tween.TweenProperty(card, "global_position", playTarget, PlayToPileSeconds)
                 .SetTrans(Tween.TransitionType.Cubic)
                 .SetEase(Tween.EaseType.Out);
