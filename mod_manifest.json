@@ -1,0 +1,14 @@
+{
+  "id": "SpectateMate",
+  "pck_name": "SpectateMate",
+  "name": "Spectate Mate",
+  "author": "local",
+  "description": "Right-click a teammate avatar to spectate them: hand (real card visuals), energy, relics, potions, piles and hover/targeting. Read-only, client-side only.",
+  "version": "1.0.0",
+  "has_pck": false,
+  "has_dll": true,
+  "affects_gameplay": false,
+  "dependencies": [
+    { "id": "STS2-RitsuLib" }
+  ]
+}

@@ -1,0 +1,74 @@
+using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Runs;
+using SpectateMate.Ui;
+using STS2RitsuLib.Patching.Models;
+
+namespace SpectateMate.Patches;
+
+/// <summary>
+/// Captures NGlobalUi/RunState. Deliberately does NOT redirect the local player:
+/// NGlobalUi.Initialize chains into TopBar.Initialize -> Portrait.Initialize,
+/// which moves player.Character.Icon into the portrait frame. Redirecting there
+/// made a rejoining player's own top-bar portrait render the teammate.
+/// </summary>
+internal sealed class GlobalUiInitializePatch : IPatchMethod
+{
+    public static string PatchId => "spectatemate_global_ui_init";
+
+    public static string Description => "Capture NGlobalUi/RunState";
+
+    public static bool IsCritical => false;
+
+    public static ModPatchTarget[] GetTargets() =>
+    [
+        PatchTarget.Method<NGlobalUi>(nameof(NGlobalUi.Initialize), typeof(RunState)),
+    ];
+
+    public static void Postfix(NGlobalUi __instance, RunState runState)
+    {
+        // A new run invalidates whatever we were spectating before.
+        DisplayedPlayer.SetTarget(null);
+        SpectateUi.CaptureGlobalUi(__instance, runState);
+    }
+}
+
+/// <summary>
+/// Combat widgets (energy orb / star counter / piles) are built for a specific
+/// player during Activate, so this one DOES redirect — it is what makes A1 work.
+/// </summary>
+internal sealed class CombatUiActivatePatch : IPatchMethod
+{
+    public static string PatchId => "spectatemate_combat_ui_activate";
+
+    public static string Description => "Energy orb / star counter / combat piles render the teammate";
+
+    public static bool IsCritical => false;
+
+    public static ModPatchTarget[] GetTargets() =>
+    [
+        PatchTarget.Method<NCombatUi>(nameof(NCombatUi.Activate), typeof(CombatState)),
+    ];
+
+    public static void Prefix(out bool __state)
+    {
+        __state = DisplayedPlayer.Push();
+    }
+
+    public static void Postfix(NCombatUi __instance)
+    {
+        SpectateUi.CaptureCombatUi(__instance);
+
+        // 观战可能在战斗外就打开了，这里补一次输入屏蔽。
+        if (DisplayedPlayer.IsActive)
+        {
+            SpectateUi.SetInteraction(false);
+        }
+    }
+
+    public static void Finalizer(bool __state)
+    {
+        DisplayedPlayer.Pop(__state);
+    }
+}

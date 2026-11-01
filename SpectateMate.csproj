@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>SpectateMate</AssemblyName>
+    <RootNamespace>SpectateMate</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>13.0</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <!-- 游戏与依赖路径 -->
+    <Sts2Dir>E:\SteamLibrary\steamapps\common\Slay the Spire 2</Sts2Dir>
+    <GameDir>$(Sts2Dir)\data_sts2_windows_x86_64</GameDir>
+    <ModDir>$(Sts2Dir)\mods</ModDir>
+    <!-- 创意工坊 RitsuLib（运行时版本，与游戏加载的 0.6.10 / API 0.111.0 完全一致） -->
+    <RitsuLibDir>E:\SteamLibrary\steamapps\workshop\content\2868840\3747602295</RitsuLibDir>
+    <RitsuLibApi>0.111.0</RitsuLibApi>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="sts2">
+      <HintPath>$(GameDir)\sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameDir)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(GameDir)\GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="STS2-RitsuLib">
+      <HintPath>$(RitsuLibDir)\compat\$(RitsuLibApi)\STS2-RitsuLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="STS2-RitsuLib.Runtime">
+      <HintPath>$(RitsuLibDir)\compat\$(RitsuLibApi)\STS2-RitsuLib.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="STS2-RitsuLib.Shared">
+      <HintPath>$(RitsuLibDir)\shared\STS2-RitsuLib.Shared.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="STS2-RitsuLib.Ui">
+      <HintPath>$(RitsuLibDir)\shared\STS2-RitsuLib.Ui.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="DeployMod" AfterTargets="Build">
+    <MakeDir Directories="$(ModDir)\$(AssemblyName)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(ModDir)\$(AssemblyName)" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\mod_manifest.json" DestinationFolder="$(ModDir)\$(AssemblyName)" Condition="Exists('$(MSBuildProjectDirectory)\mod_manifest.json')" />
+    <Message Text="Deployed $(AssemblyName).dll -> $(ModDir)\$(AssemblyName)" Importance="high" />
+  </Target>
+</Project>
