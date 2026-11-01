@@ -593,6 +593,10 @@ internal static class HandMirror
         // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
         hand.ForceRefreshCardIndices();
 
+        // 必须在 ForceRefreshCardIndices 之后执行：_active 为 false 的瞬间
+        // RefreshLayout 会把原生编号写回来。
+        HideVanillaLabels();
+
         RestorePendingSettle(hand, layer);
 
         Control? ctr = ContainerOf(hand);
@@ -869,6 +873,13 @@ internal static class HandMirror
                 try
                 {
                     if (!GodotObject.IsInstanceValid(flying))
+                    {
+                        return;
+                    }
+
+                    // 可能已经被别的回收路径处理过（NodePool.Free 会把节点摘下来），
+                    // 再还一次就会报 Tried to free object ... back to pool。
+                    if (flying.GetParent() == null)
                     {
                         return;
                     }

@@ -238,9 +238,9 @@ public static class SpectateOverlay
             return;
         }
 
-        FreeCards();
-        _handKey = string.Empty;
-        HandMirror.Hide(SpectateUi.Hand);
+        // 战斗结束就退出观战：战斗状态已经失效，继续留在观战画面只会显示陈旧数据，
+        // 表现为「页面卡住」。只关窗口不清登记，头像还能再次右键进入。
+        Close();
     }
 
     private static Label AddLabel(Container parent, int fontSize, Color color)
