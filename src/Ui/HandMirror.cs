@@ -67,6 +67,11 @@ internal static class HandMirror
         typeof(NPlayerHand).GetField(
             "_selectModeConfirmButton",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    private static readonly System.Reflection.FieldInfo? SelectModeBackstopField =
+        typeof(NPlayerHand).GetField(
+            "_selectModeBackstop",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
     private static bool _vanillaHidden;
     private static Color _savedModulate = Colors.White;
     private static StringName _key = string.Empty;
@@ -222,6 +227,23 @@ internal static class HandMirror
                 if (visible && !string.IsNullOrEmpty(prompt))
                 {
                     header.Text = "[center]" + prompt + "[/center]";
+                }
+            }
+
+            // 原版选牌时会淡入一层全屏遮罩（_selectModeBackstop self_modulate:a -> 1），
+            // 画面整体变暗。观战时同样要有，否则像没进入选择状态。
+            if (SelectModeBackstopField?.GetValue(hand) is Control backstop)
+            {
+                if (visible)
+                {
+                    backstop.Visible = true;
+                    backstop.SelfModulate = new Color(1f, 1f, 1f, 1f);
+                    backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
+                }
+                else
+                {
+                    backstop.SelfModulate = new Color(1f, 1f, 1f, 0f);
+                    backstop.Visible = false;
                 }
             }
 
