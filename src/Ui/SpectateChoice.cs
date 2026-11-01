@@ -52,10 +52,6 @@ public static class SpectateChoice
     private static Player? _handOwner;
     private static string _handPrompt = string.Empty;
     private static bool _handUiShown;
-    private static ulong _handStartedMs;
-
-    // 兜底超时：正常选择几秒就结束，这里给足余量，避免误伤长考。
-    private const ulong HandSelectionTimeoutMs = 20000;
     private static bool _subscribed;
 
     public static void RememberChooseACard(IReadOnlyList<CardModel> cards, bool canSkip, Player player)
@@ -80,7 +76,6 @@ public static class SpectateChoice
         _handSelecting = true;
         _handOwner = player;
         _handFilter = filter;
-        _handStartedMs = Godot.Time.GetTicksMsec();
         EnsureSubscribed();
 
         try
@@ -103,7 +98,6 @@ public static class SpectateChoice
         _handFilter = null;
         _handOwner = null;
         _handPrompt = string.Empty;
-        _handStartedMs = 0;
         _handUiShown = false;
         HandMirror.ClearHandSelection();
         HandMirror.ClearHighlight();
@@ -175,16 +169,7 @@ public static class SpectateChoice
         // 它不压覆盖层，NetScreenType 始终是 Room，用了这个条件会导致
         // 遮罩和提示永远不出现。
         //
-        // 结束信号以 PlayerChoiceReceived 为准；另外挂一个长超时兜底，
-        // 万一事件丢了也不会永久停在选择模式。
-        if (_handSelecting && _handStartedMs != 0
-            && Godot.Time.GetTicksMsec() - _handStartedMs > HandSelectionTimeoutMs)
-        {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand selection timed out; clearing");
-            EndHandSelection();
-            return;
-        }
-
+        // 结束信号只认 PlayerChoiceReceived——结果送达时必定触发。
         bool active =
             _handSelecting &&
             target != null &&
