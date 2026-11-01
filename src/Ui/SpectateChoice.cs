@@ -4,6 +4,7 @@ using Godot;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 
@@ -70,11 +71,30 @@ public static class SpectateChoice
                 return;
             }
 
-            // 断开一切输入：观战者不能替他做选择。
-            _screen.ProcessMode = Node.ProcessModeEnum.Disabled;
+            // 不能直接把 ProcessMode 设成 Disabled：那会连 _Ready 里的
+            // 卡片飞入补间和淡入一起冻住，三张卡会叠在初始位置，看起来只有一张。
+            // 改为逐个掐掉输入源。
+            _screen.MouseFilter = Control.MouseFilterEnum.Ignore;
 
-            // ProcessMode.Disabled 会暂停淡入补间，手动补上最终状态。
-            _screen.Modulate = Colors.White;
+            int disabled = 0;
+            foreach (Node node in _screen.FindChildren("*", string.Empty, true, false))
+            {
+                switch (node)
+                {
+                    case NCardHolder holder:
+                        holder.Hitbox.SetEnabled(false);
+                        holder.Hitbox.MouseFilter = Control.MouseFilterEnum.Ignore;
+                        disabled++;
+                        break;
+
+                    case BaseButton button:
+                        button.Disabled = true;
+                        disabled++;
+                        break;
+                }
+            }
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: input disabled on {disabled} nodes");
 
             ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: showing {_cards!.Count} candidates");
         }
@@ -103,12 +123,12 @@ public static class SpectateChoice
         _screen = null;
     }
 
-    /// <summary>退出观战时清空全部状态。</summary>
+    /// <summary>
+    /// 退出观战时只关界面，保留最近一次候选。
+    /// 他可能还停在选牌界面没动，重新观战时要能立刻再看到。
+    /// </summary>
     public static void Reset()
     {
         Close();
-        _cards = null;
-        _owner = null;
-        _canSkip = false;
     }
 }
