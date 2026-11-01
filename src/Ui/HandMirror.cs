@@ -81,6 +81,39 @@ internal static class HandMirror
     public static bool IsShowing => _active;
 
     /// <summary>
+    /// 进战斗时主动把「隐藏原生卡」的状态清干净。
+    ///
+    /// 观战时会把 CardHolderContainer.Modulate 设为 alpha=0；如果退出观战那一刻
+    /// 找不到 hand（回主菜单、切场景），恢复就会静默失败，容器带着 alpha=0 复活，
+    /// 玩家自己的手牌整片透明。而恢复逻辑只挂在 Hide() 里，进战斗时没人调用它，
+    /// 于是只有「再观战一次」才会被动修好。
+    ///
+    /// 这里在战斗 UI 重建时无条件重置，不依赖任何历史状态。
+    /// </summary>
+    public static void ResetVanillaState()
+    {
+        _vanillaHidden = false;
+        _savedModulate = Colors.White;
+
+        try
+        {
+            Control? container = ContainerOf(NCombatRoom.Instance?.Ui?.Hand)
+                ?? ContainerOf(SpectateUi.Hand)
+                ?? ContainerOf(_lastHand);
+
+            if (container != null && container.Modulate.A <= 0f)
+            {
+                container.Modulate = Colors.White;
+                ModEntry.Log.Info($"[{ModEntry.ModId}] vanilla hand container was left transparent; restored");
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    /// <summary>
     /// The holders the vanilla layout should position. Empty when not spectating,
     /// which makes ActiveHoldersPatch fall through to the original getter.
     /// </summary>

@@ -60,6 +60,10 @@ internal sealed class CombatUiActivatePatch : IPatchMethod
     {
         SpectateUi.CaptureCombatUi(__instance);
 
+        // 战斗 UI 刚建好，手牌容器可能带着上一局残留的透明状态。
+        // 这里无条件重置，不依赖 Hide() 是否成功执行过。
+        HandMirror.ResetVanillaState();
+
         // 观战可能在战斗外就打开了，这里补一次输入屏蔽。
         if (DisplayedPlayer.IsActive)
         {
