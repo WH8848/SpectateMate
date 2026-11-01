@@ -87,9 +87,14 @@ internal static class HandMirror
                 ?? ContainerOf(SpectateUi.Hand)
                 ?? ContainerOf(_lastHand);
 
+            // 无条件留痕：这条能确认 ResetVanillaState 到底有没有被执行、
+            // 以及当时的容器状态。每场战斗只会打印一次。
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] reset vanilla state: hand={(NCombatRoom.Instance?.Ui?.Hand != null)} " +
+                $"container={(container != null)} alpha={container?.Modulate.A}");
+
             if (container == null)
             {
-                ModEntry.Log.Info($"[{ModEntry.ModId}] vanilla hand container not found during reset");
                 return;
             }
 
