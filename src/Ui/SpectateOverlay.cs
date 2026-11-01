@@ -394,6 +394,18 @@ public static class SpectateOverlay
                 else
                 {
                     HoveredModelData hover = input.GetHoveredModelData(_target.NetId);
+
+                // 只同步悬停，不同步「已选中」，所以用悬停高亮复刻选择时的视觉反馈。
+                try
+                {
+                    ModelId? hoveredId = hover.hoveredModelId;
+                    HandMirror.HighlightHovered(hoveredId);
+                    SpectateChoice.HighlightHovered(hoveredId);
+                }
+                catch (Exception e)
+                {
+                    ModEntry.Log.Warn($"[{ModEntry.ModId}] hover highlight tick failed: {e.Message}");
+                }
                     bool targeting = input.GetIsTargeting(_target.NetId);
                     _hoverLine.Text = (targeting ? "瞄准 " : "悬停 ") + HoverText(hover);
                 }

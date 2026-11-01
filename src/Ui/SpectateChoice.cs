@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -263,6 +264,60 @@ public static class SpectateChoice
         ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: input disabled on {disabled} nodes");
     }
 
+    private static ModelId? _hoverId;
+
+    /// <summary>
+    /// 高亮他在选牌界面里悬停的那张。选牌界面里的卡也是我们自己创建的 NCard，
+    /// 直接遍历界面子节点匹配 ModelId 即可。
+    /// </summary>
+    public static void HighlightHovered(ModelId? id)
+    {
+        if (id == _hoverId)
+        {
+            return;
+        }
+
+        _hoverId = id;
+
+        try
+        {
+            if (_screen is not Node root || !GodotObject.IsInstanceValid(root))
+            {
+                return;
+            }
+
+            foreach (Node node in root.FindChildren("*", nameof(NCardHolder), true, false))
+            {
+                if (node is not NCardHolder holder)
+                {
+                    continue;
+                }
+
+                NCard? card = holder.CardNode;
+                if (card == null || !GodotObject.IsInstanceValid(card))
+                {
+                    continue;
+                }
+
+                bool match = id != null && card.Model != null && card.Model.Id == id;
+
+                if (match)
+                {
+                    card.CardHighlight.Modulate = NCardHighlight.gold;
+                    card.CardHighlight.AnimShow();
+                }
+                else
+                {
+                    card.CardHighlight.AnimHide();
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] choice hover highlight failed: {e.Message}");
+        }
+    }
+
     /// <summary>关闭只读界面。重复调用安全。</summary>
     public static void Close()
     {
@@ -279,12 +334,9 @@ public static class SpectateChoice
         }
 
         _screen = null;
+        _hoverId = null;
     }
 
-    /// <summary>
-    /// 退出观战时只关界面，保留最近一次候选。
-    /// 他可能还停在选牌界面没动，重新观战时要能立刻再看到。
-    /// </summary>
     /// <summary>
     /// 退出观战：只恢复视觉，保留「他还在选」这个事实。
     /// 他可能一直停在弃牌/烧牌的选择页面没动，重新观战时要能立刻再看到。

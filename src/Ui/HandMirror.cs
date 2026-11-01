@@ -275,6 +275,50 @@ internal static class HandMirror
         }
     }
 
+    private static ModelId? _hoverId;
+
+    /// <summary>
+    /// 高亮他鼠标正指着的牌。游戏只同步悬停（HoveredModelData），不同步「已选中」，
+    /// 所以原版那种选中态做不到；但悬停本来就是选择时最明显的视觉反馈。
+    /// </summary>
+    public static void HighlightHovered(ModelId? id)
+    {
+        if (id == _hoverId)
+        {
+            return;
+        }
+
+        _hoverId = id;
+
+        try
+        {
+            foreach (NHandCardHolder holder in Holders)
+            {
+                NCard? card = holder?.CardNode;
+                if (card == null || !GodotObject.IsInstanceValid(card))
+                {
+                    continue;
+                }
+
+                bool match = id != null && card.Model != null && card.Model.Id == id;
+
+                if (match)
+                {
+                    card.CardHighlight.Modulate = NCardHighlight.gold;
+                    card.CardHighlight.AnimShow();
+                }
+                else
+                {
+                    card.CardHighlight.AnimHide();
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] hover highlight failed: {e.Message}");
+        }
+    }
+
     public static void Hide(NPlayerHand? hand, bool restoreVanilla = true)
     {
         hand ??= _lastHand;
@@ -305,6 +349,7 @@ internal static class HandMirror
         }
 
         Detached.Clear();
+        _hoverId = null;
 
         foreach (SettlingCard settling in Settling.ToArray())
         {
