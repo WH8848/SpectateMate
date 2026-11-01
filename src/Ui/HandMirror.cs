@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Nodes.Pooling;
 
 namespace SpectateMate.Ui;
@@ -470,26 +471,86 @@ internal static class HandMirror
         }
     }
 
+    /// <summary>
+    /// 复用原版的 NCardFlyVfx：它自带 NCardTrailVfx 拖尾和贝塞尔控制点，
+    /// 这就是原版打出牌后那条「弧形彩色光带」的来源。拖尾贴图取自
+    /// Character.TrailPath，所以不同角色颜色不同。
+    ///
+    /// 用法照抄 CardPileCmd.cs:792——先 reparent 到角色 VFX 容器，再创建特效。
+    /// 卡片所有权转交给 VFX，holder 空壳直接回收。
+    /// </summary>
     private static void FlyToPile(SettlingCard item, PileType pile)
     {
         try
         {
-            Vector2 target = pile.GetTargetPosition(item.Card);
+            Detached.Remove(item.Holder);
 
-            Tween tween = item.Card.CreateTween();
-            tween.TweenProperty(item.Card, "global_position", target, PlaySettleSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.In);
-            tween.Parallel()
-                .TweenProperty(item.Card, "scale", Vector2.One * 0.45f, PlaySettleSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.In);
-            tween.TweenCallback(Callable.From(() => DestroyHolder(item.Holder)));
+            Player? owner = null;
+            Node? container = null;
 
-            FlightTweens[item.Card] = tween;
+            try
+            {
+                owner = item.Model.Owner;
+                container = owner?.Creature?.GetVfxContainer();
+            }
+            catch
+            {
+                container = null;
+            }
+
+            if (container == null || owner == null)
+            {
+                DestroyHolder(item.Holder);
+                return;
+            }
+
+            item.Card.Reparent(container);
+
+            NCardFlyVfx? vfx = NCardFlyVfx.Create(
+                item.Card,
+                pile,
+                isAddingToPile: true,
+                owner.Character.TrailPath);
+
+            if (vfx == null)
+            {
+                DestroyHolder(item.Holder);
+                return;
+            }
+
+            container.AddChildSafely(vfx);
+
+            // NCardFlyVfx 只是把卡片 Visible=false 然后自己 QueueFree，
+            // 并不负责回收卡片本体。这里在特效销毁时补一次归还。
+            NCard flying = item.Card;
+            vfx.TreeExited += () =>
+            {
+                try
+                {
+                    if (!GodotObject.IsInstanceValid(flying))
+                    {
+                        return;
+                    }
+
+                    ResetPooledCard(flying);
+                    flying.GetParent()?.RemoveChild(flying);
+                    NodePool.Free(flying);
+                }
+                catch
+                {
+                    // ignored
+                }
+            };
+
+            // 卡片现在归特效管，holder 只是空壳。
+            if (GodotObject.IsInstanceValid(item.Holder))
+            {
+                item.Holder.QueueFree();
+            }
         }
-        catch
+        catch (Exception e)
         {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
             DestroyHolder(item.Holder);
         }
     }
