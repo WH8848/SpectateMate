@@ -1,8 +1,8 @@
 {
   "id": "SpectateMate",
   "pck_name": "SpectateMate",
-  "name": "Spectate Mate",
-  "author": "local",
+  "name": "（功能）右键队友头像观战",
+  "author": "WH8848",
   "description": "Right-click a teammate avatar to spectate them: hand (real card visuals), energy, relics, potions, piles and hover/targeting. Read-only, client-side only.",
   "version": "1.0.0",
   "has_pck": false,
