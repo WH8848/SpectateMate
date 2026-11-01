@@ -236,6 +236,11 @@ internal static class HandMirror
             {
                 backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
 
+                // 必须 kill 上一个补间：退出观战时的淡出还没跑完就重新进入，
+                // 两个补间会同时改 self_modulate:a，表现为闪一下然后一直亮着。
+                _backstopTween?.Kill();
+                _backstopTween = null;
+
                 if (visible)
                 {
                     // 与原版一致：从透明开始，0.2 秒淡入到不透明。
@@ -247,18 +252,24 @@ internal static class HandMirror
                     }
 
                     backstop.Visible = true;
-                    Tween fadeIn = backstop.CreateTween();
-                    fadeIn.TweenProperty(backstop, "self_modulate:a", 1f, 0.2f)
+                    _backstopTween = backstop.CreateTween();
+                    _backstopTween.TweenProperty(backstop, "self_modulate:a", 1f, 0.2f)
                         .SetTrans(Tween.TransitionType.Cubic)
                         .SetEase(Tween.EaseType.Out);
                 }
                 else
                 {
-                    Tween fadeOut = backstop.CreateTween();
-                    fadeOut.TweenProperty(backstop, "self_modulate:a", 0f, 0.2f)
+                    _backstopTween = backstop.CreateTween();
+                    _backstopTween.TweenProperty(backstop, "self_modulate:a", 0f, 0.2f)
                         .SetTrans(Tween.TransitionType.Cubic)
                         .SetEase(Tween.EaseType.Out);
-                    fadeOut.TweenCallback(Callable.From(() => backstop.Visible = false));
+                    _backstopTween.TweenCallback(Callable.From(() =>
+                    {
+                        Color zero = backstop.SelfModulate;
+                        zero.A = 0f;
+                        backstop.SelfModulate = zero;
+                        backstop.Visible = false;
+                    }));
                 }
             }
 
@@ -385,6 +396,7 @@ internal static class HandMirror
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
     private static int _lastEnergy = int.MinValue;
+    private static Tween? _backstopTween;
 
     /// <summary>
     /// 队友能量变化时刷新所有镜像卡的费用颜色。
@@ -566,8 +578,8 @@ internal static class HandMirror
 
         Control? ctr = ContainerOf(hand);
         Diag(
-            $"showing {Holders.Count} cards | layer={_layer?.Position}/{_layer?.Size} " +
-            $"ctr={ctr?.Position}/{ctr?.Size}");
+            $"showing {Holders.Count} cards | ctrMod={ctr?.Modulate} " +
+            $"ctrKids={ctr?.GetChildCount()} | labels={DescribeIndexLabels()}");
     }
 
     private static NHandCardHolder? CreateHolder(NPlayerHand hand, Control layer, CardModel model)
@@ -858,6 +870,44 @@ internal static class HandMirror
             ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
             DestroyHolder(item.Holder);
         }
+    }
+
+    private static readonly System.Reflection.FieldInfo? HandIndexLabelField =
+        typeof(NHandCardHolder).GetField(
+            "_handIndexLabel",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    /// <summary>诊断用：把镜像 holder 的编号标签串起来，便于核对是否重号。</summary>
+    private static string DescribeIndexLabels()
+    {
+        if (HandIndexLabelField == null || Holders.Count == 0)
+        {
+            return "-";
+        }
+
+        var sb = new System.Text.StringBuilder();
+
+        foreach (NHandCardHolder holder in Holders)
+        {
+            if (holder == null || !GodotObject.IsInstanceValid(holder))
+            {
+                sb.Append("?,");
+                continue;
+            }
+
+            string text = HandIndexLabelField.GetValue(holder) is MegaLabel label ? label.Text : "?";
+
+            if (holder.Visible)
+            {
+                sb.Append(text).Append(',');
+            }
+            else
+            {
+                sb.Append('(').Append(text).Append("),");
+            }
+        }
+
+        return sb.ToString();
     }
 
     private static void DestroyHolder(NHandCardHolder? holder)
