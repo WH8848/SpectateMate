@@ -791,17 +791,25 @@ internal static class SpectateUi
                 return;
             }
 
-            bool active;
+            // 只在确定「现在轮到我出牌」时恢复，其余情况交给游戏自己管理。
+            // 原先用 !PlayerActionsDisabled 判断，但它是全局标志——队友回合时
+            // 也可能是 false，会把我的手牌错误地照亮，或者反过来留成灰的。
+            bool myTurn = false;
+
             try
             {
-                active = !CombatManager.Instance.PlayerActionsDisabled;
+                Player? me = _runState != null ? LocalContext.GetMe(_runState.Players) : null;
+                myTurn = me?.PlayerCombatState?.Phase == PlayerTurnPhase.Play;
             }
             catch
             {
-                active = true;
+                myTurn = false;
             }
 
-            InvokeMethod(hand, active ? "AnimEnable" : "AnimDisable");
+            if (myTurn)
+            {
+                InvokeMethod(hand, "AnimEnable");
+            }
         });
     }
 

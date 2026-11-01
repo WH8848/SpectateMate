@@ -159,16 +159,19 @@ public static class SpectateChoice
             Close();
         }
 
-        SyncHandSelection(target);
+        SyncHandSelection(target, screenType);
     }
 
-    private static void SyncHandSelection(Player? target)
+    private static void SyncHandSelection(Player? target, NetScreenType screenType)
     {
+        // 界面类型也要参与判断：他选完之后 NetScreenType 会离开 CardSelection，
+        // 如果只看 _handSelecting 就会一直卡在弃牌界面。
         bool active =
             _handSelecting &&
             target != null &&
             _handOwner != null &&
-            _handOwner.NetId == target.NetId;
+            _handOwner.NetId == target.NetId &&
+            screenType == NetScreenType.CardSelection;
 
         if (active)
         {

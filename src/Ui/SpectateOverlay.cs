@@ -218,10 +218,12 @@ public static class SpectateOverlay
             _hoverLine = null;
             _target = null;
             _handKey = string.Empty;
+            // 先恢复手牌状态：Apply(null) 里有一串 rebind，任何一处抛异常
+            // 都会跳过它，导致手牌一直停在灰色/下移状态。
+            SpectateUi.RestoreOwnHandState();
             SpectateChoice.Reset();
             SpectateUi.SetInteraction(true);
             SpectateUi.Apply(null);
-            SpectateUi.RestoreOwnHandState();
         }
     }
 
@@ -315,6 +317,11 @@ public static class SpectateOverlay
             {
                 RebuildHand(cs);
                 HandMirror.Sync(SpectateUi.Hand, cs.Hand.Cards);
+
+                // 这两个必须每拍无条件跑，之前放在 hover 分支里，
+                // 只在鼠标悬停到某张牌时才执行，所以原生编号一直没被压掉。
+                HandMirror.RefreshCostColors(cs.Energy);
+                HandMirror.HideVanillaLabels();
             }
             else
             {
@@ -409,16 +416,6 @@ public static class SpectateOverlay
 
                 // 卡面费用颜色只在 UpdateVisuals 时算一次，能量变了不会自动重算，
                 // 会出现「能量已经回来，卡还是红的」。
-                try
-                {
-                    HandMirror.RefreshCostColors(cs?.Energy ?? int.MinValue);
-                    HandMirror.HideVanillaLabels();
-                }
-                catch (Exception e)
-                {
-                    ModEntry.Log.Warn($"[{ModEntry.ModId}] cost refresh tick failed: {e.Message}");
-                }
-
                 // 只同步悬停，不同步「已选中」，所以用悬停高亮复刻选择时的视觉反馈。
                 try
                 {
