@@ -10,6 +10,7 @@ using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Pooling;
 
 namespace SpectateMate.Ui;
@@ -30,7 +31,10 @@ internal static class HandMirror
     public static readonly bool Enabled = true;
 
     private const float SpawnOffsetY = 180f;
-    private const float PlayedFlightSeconds = 0.32f;
+    // 与原版 NCard.AnimCardToPlayPile 一致：0.2s、缩放到 0.8
+    private const float PlayToPileSeconds = 0.2f;
+    private const float PlayHoldSeconds = 0.18f;
+    private const float PlaySettleSeconds = 0.22f;
 
     private static readonly List<NHandCardHolder> Holders = new();
     private static readonly List<NHandCardHolder> Detached = new();
@@ -298,25 +302,67 @@ internal static class HandMirror
                 return;
             }
 
-            Vector2 centre = card.GetViewportRect().Size * 0.5f;
+            // 复刻 NCard.AnimCardToPlayPile：飞到播放区、缩放到 0.8、0.2 秒、不淡出。
+            // 之后短暂停留（相当于原版的结算过程），再飞向弃牌堆并移除。
+            Vector2 playTarget = PlayTargetGlobal(card);
+            Vector2 discardTarget = PlayTargetGlobal(card, PileType.Discard);
 
             Tween tween = card.CreateTween();
-            tween.SetParallel(true);
-            tween.TweenProperty(card, "global_position", centre, PlayedFlightSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.In);
-            tween.TweenProperty(card, "scale", Vector2.One * 1.35f, PlayedFlightSeconds)
+
+            tween.TweenProperty(card, "global_position", playTarget, PlayToPileSeconds)
                 .SetTrans(Tween.TransitionType.Cubic)
                 .SetEase(Tween.EaseType.Out);
-            tween.TweenProperty(card, "modulate:a", 0f, PlayedFlightSeconds)
-                .SetDelay(PlayedFlightSeconds * 0.45f);
-            tween.Chain().TweenCallback(Callable.From(() => DestroyHolder(holder)));
+            tween.Parallel()
+                .TweenProperty(card, "scale", Vector2.One * 0.8f, PlayToPileSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.Out);
+
+            tween.TweenInterval(PlayHoldSeconds);
+
+            tween.TweenProperty(card, "global_position", discardTarget, PlaySettleSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.In);
+            tween.Parallel()
+                .TweenProperty(card, "scale", Vector2.One * 0.45f, PlaySettleSeconds)
+                .SetTrans(Tween.TransitionType.Cubic)
+                .SetEase(Tween.EaseType.In);
+
+            tween.TweenCallback(Callable.From(() => DestroyHolder(holder)));
             FlightTweens[card] = tween;
         }
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] played-card animation failed: {e.Message}");
             DestroyHolder(holder);
+        }
+    }
+
+    /// <summary>
+    /// PileType.Play.GetTargetPosition 返回的是相对 PlayContainer 的局部坐标
+    /// （原版会把卡片 reparent 进去），而 Discard 返回全局坐标。
+    /// 这里统一换算成全局坐标。
+    /// </summary>
+    private static Vector2 PlayTargetGlobal(NCard card, PileType pile = PileType.Play)
+    {
+        try
+        {
+            if (pile != PileType.Play)
+            {
+                return pile.GetTargetPosition(card);
+            }
+
+            NCombatUi? ui = NCombatRoom.Instance?.Ui;
+            if (ui?.PlayContainer is not { } container)
+            {
+                return card.GlobalPosition;
+            }
+
+            Vector2 local = PileType.Play.GetTargetPosition(card);
+            return container.GlobalPosition + container.Scale * local;
+        }
+        catch
+        {
+            return card.GlobalPosition;
         }
     }
 
