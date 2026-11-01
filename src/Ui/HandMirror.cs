@@ -234,16 +234,31 @@ internal static class HandMirror
             // 画面整体变暗。观战时同样要有，否则像没进入选择状态。
             if (SelectModeBackstopField?.GetValue(hand) is Control backstop)
             {
+                backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
+
                 if (visible)
                 {
+                    // 与原版一致：从透明开始，0.2 秒淡入到不透明。
+                    if (!backstop.Visible)
+                    {
+                        Color from = backstop.SelfModulate;
+                        from.A = 0f;
+                        backstop.SelfModulate = from;
+                    }
+
                     backstop.Visible = true;
-                    backstop.SelfModulate = new Color(1f, 1f, 1f, 1f);
-                    backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
+                    Tween fadeIn = backstop.CreateTween();
+                    fadeIn.TweenProperty(backstop, "self_modulate:a", 1f, 0.2f)
+                        .SetTrans(Tween.TransitionType.Cubic)
+                        .SetEase(Tween.EaseType.Out);
                 }
                 else
                 {
-                    backstop.SelfModulate = new Color(1f, 1f, 1f, 0f);
-                    backstop.Visible = false;
+                    Tween fadeOut = backstop.CreateTween();
+                    fadeOut.TweenProperty(backstop, "self_modulate:a", 0f, 0.2f)
+                        .SetTrans(Tween.TransitionType.Cubic)
+                        .SetEase(Tween.EaseType.Out);
+                    fadeOut.TweenCallback(Callable.From(() => backstop.Visible = false));
                 }
             }
 
