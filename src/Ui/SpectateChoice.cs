@@ -100,6 +100,7 @@ public static class SpectateChoice
         _handPrompt = string.Empty;
         _handUiShown = false;
         HandMirror.ClearHandSelection();
+        HandMirror.ClearHighlight();
         HandMirror.ApplySelectionUi(visible: false, null);
     }
 

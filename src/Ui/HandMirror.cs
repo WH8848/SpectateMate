@@ -380,6 +380,78 @@ internal static class HandMirror
         _hoverId = null;
     }
 
+    private static readonly System.Reflection.MethodInfo? UpdateEnergyCostColorMethod =
+        typeof(NCard).GetMethod(
+            "UpdateEnergyCostColor",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    private static int _lastEnergy = int.MinValue;
+
+    /// <summary>
+    /// 队友能量变化时刷新所有镜像卡的费用颜色。
+    /// 卡面颜色只在 UpdateVisuals 时计算一次，手牌集合没变就不会重算，
+    /// 于是会出现「能量已经回来，卡还是红的」。这里只调私有的费用刷新，
+    /// 不动卡面其它状态（避免把高亮、描述一起重置）。
+    /// </summary>
+    public static void RefreshCostColors(int energy)
+    {
+        if (energy == _lastEnergy)
+        {
+            return;
+        }
+
+        _lastEnergy = energy;
+
+        if (UpdateEnergyCostColorMethod == null || Holders.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var args = new object[] { PileType.Hand };
+
+            foreach (NHandCardHolder holder in Holders)
+            {
+                NCard? card = holder?.CardNode;
+                if (card == null || !GodotObject.IsInstanceValid(card) || card.Model == null)
+                {
+                    continue;
+                }
+
+                UpdateEnergyCostColorMethod.Invoke(card, args);
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] refresh cost colors failed: {e.Message}");
+        }
+    }
+
+    /// <summary>清掉所有高亮（选择结束、观战退出时用）。</summary>
+    public static void ClearHighlight()
+    {
+        _hoverId = null;
+
+        try
+        {
+            foreach (NHandCardHolder holder in Holders)
+            {
+                NCard? card = holder?.CardNode;
+                if (card == null || !GodotObject.IsInstanceValid(card))
+                {
+                    continue;
+                }
+
+                card.CardHighlight.AnimHide();
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     public static void Hide(NPlayerHand? hand, bool restoreVanilla = true)
     {
         hand ??= _lastHand;
@@ -411,6 +483,7 @@ internal static class HandMirror
 
         Detached.Clear();
         _hoverId = null;
+        _lastEnergy = int.MinValue;
 
         foreach (SettlingCard settling in Settling.ToArray())
         {
@@ -806,7 +879,14 @@ internal static class HandMirror
 
             NCard? card = holder.CardNode;
 
-            if (card != null && GodotObject.IsInstanceValid(card))
+            // 出牌动画会把 CardNode reparent 到角色 VFX 容器，由 NCardFlyVfx 接管，
+            // 最终在 vfx.TreeExited 里归还。这里必须确认卡片还挂在自己名下，
+            // 否则会重复归还（日志里的 Tried to free object ... back to pool）。
+            bool ownsCard = card != null
+                && GodotObject.IsInstanceValid(card)
+                && card.GetParent() == holder;
+
+            if (ownsCard && card != null)
             {
                 ResetPooledCard(card);
             }
@@ -814,7 +894,7 @@ internal static class HandMirror
             holder.GetParent()?.RemoveChild(holder);
             holder.QueueFree();
 
-            if (card != null && GodotObject.IsInstanceValid(card))
+            if (ownsCard && card != null && GodotObject.IsInstanceValid(card))
             {
                 card.GetParent()?.RemoveChild(card);
                 NodePool.Free(card);
@@ -941,7 +1021,11 @@ internal static class HandMirror
                 }
 
                 NCard? card = holder.CardNode;
-                if (card != null && GodotObject.IsInstanceValid(card))
+                bool ownsCard = card != null
+                    && GodotObject.IsInstanceValid(card)
+                    && card.GetParent() == holder;
+
+                if (ownsCard && card != null)
                 {
                     ResetPooledCard(card);
                 }
@@ -949,7 +1033,7 @@ internal static class HandMirror
                 holder.GetParent()?.RemoveChild(holder);
                 holder.QueueFree();
 
-                if (card != null && GodotObject.IsInstanceValid(card))
+                if (ownsCard && card != null && GodotObject.IsInstanceValid(card))
                 {
                     card.GetParent()?.RemoveChild(card);
                     NodePool.Free(card);

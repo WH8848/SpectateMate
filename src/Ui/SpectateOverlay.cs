@@ -406,6 +406,17 @@ public static class SpectateOverlay
                 {
                     HoveredModelData hover = input.GetHoveredModelData(_target.NetId);
 
+                // 卡面费用颜色只在 UpdateVisuals 时算一次，能量变了不会自动重算，
+                // 会出现「能量已经回来，卡还是红的」。
+                try
+                {
+                    HandMirror.RefreshCostColors(cs?.Energy ?? int.MinValue);
+                }
+                catch (Exception e)
+                {
+                    ModEntry.Log.Warn($"[{ModEntry.ModId}] cost refresh tick failed: {e.Message}");
+                }
+
                 // 只同步悬停，不同步「已选中」，所以用悬停高亮复刻选择时的视觉反馈。
                 // 颜色取被观战者的角色代表色（CharacterModel.NameColor）。
                 try
