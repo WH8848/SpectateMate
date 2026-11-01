@@ -160,6 +160,27 @@ internal static class HandMirror
             }
             else
             {
+                if (hand != _lastHand)
+                {
+                    // 战斗切换：NPlayerHand 是新节点，旧的 layer / holder 全都属于
+                    // 已销毁的场景。若不在这里整体作废，下面的 key 比对会因为
+                    // 「队友手牌没变」而走复用分支，把已失效的 holder 继续交给
+                    // ActiveHolders，表现为手牌区显示的是上一场的镜像牌、
+                    // 而原生手牌又被 HideVanillaNodes 藏掉了。
+                    _key = string.Empty;
+                    _active = false;
+                    _layer = null;
+                    _vanillaHidden = false;
+                    _savedModulate = Colors.White;
+                    _hoverId = null;
+                    _lastEnergy = int.MinValue;
+
+                    Holders.Clear();
+                    Detached.Clear();
+                    Settling.Clear();
+                    FlightTweens.Clear();
+                }
+
                 _lastHand = hand;
             }
 
