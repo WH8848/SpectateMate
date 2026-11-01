@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
+using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Commands;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
@@ -13,12 +15,15 @@ namespace SpectateMate.Patches;
 /// <summary>
 /// 抓取被观战者正在进行的选牌候选。
 ///
-/// 选牌逻辑在所有客户端都会执行（确定性锁步），候选列表 cards 是
-/// FromChooseACardScreen 的参数，因此本地手里就有；只是非 owner 分支
-/// 不会弹界面，而是直接等远端结果。
+/// 选牌逻辑在所有客户端都会执行（确定性锁步），候选来自方法参数，因此本地
+/// 手里就有；只是非 owner 分支不弹界面，而是直接等远端结果。
+///
+/// 目前覆盖两条路径：
+/// * FromChooseACardScreen —— 从 N 张里挑一张（发现、飞溅）
+/// * FromCombatPile(5 参) —— 从抽牌堆/弃牌堆选（冲锋、涅奥之怒）
 ///
 /// CardSelectCmd 是 static class，不能作为 RitsuLib PatchTarget.Method&lt;T&gt;
-/// 的类型实参，所以这里直接用 Harmony。
+/// 的类型实参，所以直接用 Harmony。
 /// </summary>
 internal static class ChoiceProbe
 {
@@ -28,7 +33,9 @@ internal static class ChoiceProbe
     {
         try
         {
-            MethodInfo? target = AccessTools.Method(
+            _harmony = new Harmony($"{ModEntry.ModId}.choice");
+
+            MethodInfo? choose = AccessTools.Method(
                 typeof(CardSelectCmd),
                 "FromChooseACardScreen",
                 new[]
@@ -39,15 +46,37 @@ internal static class ChoiceProbe
                     typeof(bool),
                 });
 
-            if (target == null)
+            if (choose != null)
             {
-                ModEntry.Log.Warn($"[{ModEntry.ModId}] FromChooseACardScreen not found; choice peek disabled");
-                return;
+                _harmony.Patch(choose, prefix: new HarmonyMethod(typeof(ChoiceProbe), nameof(ChoosePrefix)));
+                ModEntry.Log.Info($"[{ModEntry.ModId}] choice probe: FromChooseACardScreen hooked");
+            }
+            else
+            {
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] choice probe: FromChooseACardScreen not found");
             }
 
-            _harmony = new Harmony($"{ModEntry.ModId}.choice");
-            _harmony.Patch(target, prefix: new HarmonyMethod(typeof(ChoiceProbe), nameof(Prefix)));
-            ModEntry.Log.Info($"[{ModEntry.ModId}] choice probe installed");
+            MethodInfo? pile = AccessTools.Method(
+                typeof(CardSelectCmd),
+                "FromCombatPile",
+                new[]
+                {
+                    typeof(PlayerChoiceContext),
+                    typeof(CardPile),
+                    typeof(Player),
+                    typeof(CardSelectorPrefs),
+                    typeof(Func<CardModel, bool>),
+                });
+
+            if (pile != null)
+            {
+                _harmony.Patch(pile, prefix: new HarmonyMethod(typeof(ChoiceProbe), nameof(PilePrefix)));
+                ModEntry.Log.Info($"[{ModEntry.ModId}] choice probe: FromCombatPile hooked");
+            }
+            else
+            {
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] choice probe: FromCombatPile not found");
+            }
         }
         catch (Exception e)
         {
@@ -55,8 +84,18 @@ internal static class ChoiceProbe
         }
     }
 
-    private static void Prefix(PlayerChoiceContext context, IReadOnlyList<CardModel> cards, Player player, bool canSkip)
+    private static void ChoosePrefix(PlayerChoiceContext context, IReadOnlyList<CardModel> cards, Player player, bool canSkip)
     {
-        SpectateChoice.Remember(cards, canSkip, player);
+        SpectateChoice.RememberChooseACard(cards, canSkip, player);
+    }
+
+    private static void PilePrefix(
+        PlayerChoiceContext context,
+        CardPile pile,
+        Player player,
+        CardSelectorPrefs prefs,
+        Func<CardModel, bool>? filter)
+    {
+        SpectateChoice.RememberCombatPile(pile, prefs, filter, player);
     }
 }
