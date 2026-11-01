@@ -1,6 +1,7 @@
 using System.Reflection;
 using MegaCrit.Sts2.Core.Logging;
 using MegaCrit.Sts2.Core.Modding;
+using SpectateMate.Core;
 using SpectateMate.Patches;
 using SpectateMate.Ui;
 using STS2RitsuLib;
@@ -23,6 +24,8 @@ public static class ModEntry
     {
         Log = RitsuLibFramework.CreateLogger(ModId);
         Log.Info($"[{ModId}] init v{typeof(ModEntry).Assembly.GetName().Version}");
+
+        SpectateSettings.Initialize();
 
         try
         {

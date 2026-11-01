@@ -258,7 +258,8 @@ public static class SpectateOverlay
 
     private static void WatchEscape()
     {
-        if (Godot.Input.IsActionJustPressed("ui_cancel") || Godot.Input.IsKeyPressed(Key.Escape))
+        // 退出键来自 RitsuLib 设置（默认 Esc），不再写死。
+        if (Godot.Input.IsKeyPressed(SpectateSettings.ExitKey))
         {
             Close();
         }

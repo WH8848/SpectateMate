@@ -45,6 +45,10 @@
       <HintPath>$(RitsuLibDir)\shared\STS2-RitsuLib.Shared.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="STS2-RitsuLib.Settings">
+      <HintPath>$(RitsuLibDir)\shared\STS2-RitsuLib.Settings.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="STS2-RitsuLib.Ui">
       <HintPath>$(RitsuLibDir)\shared\STS2-RitsuLib.Ui.dll</HintPath>
       <Private>false</Private>
