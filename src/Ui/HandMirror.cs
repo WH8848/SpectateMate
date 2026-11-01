@@ -34,6 +34,7 @@ internal static class HandMirror
 
     private static readonly List<NHandCardHolder> Holders = new();
     private static readonly List<NHandCardHolder> Detached = new();
+    private static readonly Dictionary<NCard, Tween> FlightTweens = new();
 
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
@@ -307,6 +308,7 @@ internal static class HandMirror
             tween.TweenProperty(card, "modulate:a", 0f, PlayedFlightSeconds)
                 .SetDelay(PlayedFlightSeconds * 0.45f);
             tween.Chain().TweenCallback(Callable.From(() => DestroyHolder(holder)));
+            FlightTweens[card] = tween;
         }
         catch (Exception e)
         {
@@ -327,6 +329,12 @@ internal static class HandMirror
             }
 
             NCard? card = holder.CardNode;
+
+            if (card != null && GodotObject.IsInstanceValid(card))
+            {
+                ResetPooledCard(card);
+            }
+
             holder.GetParent()?.RemoveChild(holder);
             holder.QueueFree();
 
@@ -340,6 +348,34 @@ internal static class HandMirror
         {
             // ignored
         }
+    }
+
+    /// <summary>
+    /// 归还对象池前必须把动画改过的属性复位：池里的节点会被游戏直接复用，
+    /// 残留的 modulate.a = 0 会让本地手牌出现透明卡，残留 scale 会让卡变大。
+    /// </summary>
+    private static void ResetPooledCard(NCard card)
+    {
+        if (FlightTweens.TryGetValue(card, out Tween? tween))
+        {
+            try
+            {
+                if (tween != null && tween.IsValid())
+                {
+                    tween.Kill();
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+
+            FlightTweens.Remove(card);
+        }
+
+        card.Modulate = Colors.White;
+        card.Scale = Vector2.One;
+        card.Position = Vector2.Zero;
     }
 
     private static Control EnsureLayer(NPlayerHand hand)
@@ -419,6 +455,11 @@ internal static class HandMirror
                 }
 
                 NCard? card = holder.CardNode;
+                if (card != null && GodotObject.IsInstanceValid(card))
+                {
+                    ResetPooledCard(card);
+                }
+
                 holder.GetParent()?.RemoveChild(holder);
                 holder.QueueFree();
 
