@@ -356,6 +356,22 @@ internal static class HandMirror
         }
     }
 
+    /// <summary>
+    /// 兜底恢复：清掉镜像并把原生 holder 的可见性还回去。
+    /// 用于「已经不在观战、但 ActiveHolders 还在被劫持」这种泄漏状态。
+    /// </summary>
+    public static void ForceHide()
+    {
+        if (!_active && !_vanillaHidden)
+        {
+            return;
+        }
+
+        ModEntry.Log.Warn($"[{ModEntry.ModId}] hand mirror leak detected; restoring vanilla holders");
+        Hide(_lastHand, restoreVanilla: true);
+        _hoverId = null;
+    }
+
     public static void Hide(NPlayerHand? hand, bool restoreVanilla = true)
     {
         hand ??= _lastHand;

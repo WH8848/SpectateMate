@@ -32,6 +32,20 @@ internal sealed class ActiveHoldersPatch : IPatchMethod
 
     public static bool Prefix(ref IReadOnlyList<NHandCardHolder> __result)
     {
+        if (!HandMirror.IsShowing)
+        {
+            return true;
+        }
+
+        // 自检：观战已经结束（没有目标）却还在劫持 ActiveHolders。
+        // 这会让游戏拿我们的镜像 holder 去排自己的手牌，表现为手牌位置全乱。
+        // 这里立刻恢复，然后照常走原版 getter。
+        if (!DisplayedPlayer.IsActive)
+        {
+            HandMirror.ForceHide();
+            return true;
+        }
+
         IReadOnlyList<NHandCardHolder> mirrors = HandMirror.MirrorHolders;
         if (mirrors.Count == 0)
         {

@@ -271,6 +271,8 @@ public static class SpectateOverlay
             return;
         }
 
+        CheckMirrorLeak();
+
         // 手牌镜像放在最前面且独立保护：后面的文本刷新一旦抛异常，
         // 也绝不能让镜像/拦截整段失效（之前正是这样导致亮出本地手牌）。
         RefreshHandMirror();
@@ -282,6 +284,15 @@ public static class SpectateOverlay
         catch (Exception e)
         {
             ModEntry.Log.Error($"[{ModEntry.ModId}] refresh error: {e}");
+        }
+    }
+
+    /// <summary>观战已结束但镜像还挂着 → 立即恢复，避免影响自己的手牌。</summary>
+    private static void CheckMirrorLeak()
+    {
+        if (!DisplayedPlayer.IsActive && HandMirror.IsShowing)
+        {
+            HandMirror.ForceHide();
         }
     }
 
