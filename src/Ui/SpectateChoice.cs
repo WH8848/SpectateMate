@@ -60,6 +60,11 @@ public static class SpectateChoice
         _cards = cards;
         _canSkip = canSkip;
         _owner = player;
+
+        // 必须在进入选择模式时订阅：PlayerChoiceReceived 是「他确认」的唯一信号。
+        // 之前只在 BeginHandSelection 里订阅，覆盖层这两种模式从来没订阅过，
+        // 所以确认后界面永远不会自己消失。
+        EnsureSubscribed();
     }
 
     public static void RememberCombatPile(CardPile pile, CardSelectorPrefs prefs, Func<CardModel, bool>? filter, Player player)
@@ -71,6 +76,9 @@ public static class SpectateChoice
         _owner = player;
 
         _lastPileSignature = string.Empty;
+
+        // 同上：进入选择模式就必须订阅，否则收不到他确认的信号。
+        EnsureSubscribed();
     }
 
     public static void BeginHandSelection(Player player, CardSelectorPrefs prefs, Func<CardModel, bool>? filter)
