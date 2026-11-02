@@ -889,34 +889,57 @@ internal static class HandMirror
         }
     }
 
+    // 悬停时把卡片抬起来的高度。
+    private const float HoverLift = 64f;
+
+    /// <summary>
+    /// 悬停抬起，但不走 FocusedHolder。
+    ///
+    /// 走 FocusedHolder 的话，RefreshLayout 会把它当成「被选中的牌」特殊处理：
+    /// 抬高、放大到 1.0、并让左右邻居按距离让位。这个状态靠 Unfocused 复位，
+    /// 而 holder 被销毁、鼠标移出窗口、观战切换都可能让那个回调不来，
+    /// 结果就是某张牌永久翘着、两边的牌挤在一起——位置错乱。
+    ///
+    /// 这里改成只动这一张：把它自己的目标位置往上挪。
+    /// RefreshLayout 只在手牌增删时重排，所以这个偏移能稳定保持；
+    /// 移开时触发一次重排就恢复。
+    /// </summary>
     private static void OnHolderFocused(NHandCardHolder holder)
     {
-        // 观战时故意不设置焦点。
-        //
-        // RefreshLayout 对 FocusedHolder 有特殊处理：把它抬高、放大到 1.0，
-        // 并让左右邻居按距离让位。这个状态一旦没被及时清掉（holder 被销毁、
-        // 鼠标移出窗口、观战切换都可能让 Unfocused 不来），
-        // 就会永久停留在某张牌上——表现出来就是「某张牌一直翘着，
-        // 两边的牌挤在一起」，也就是位置错乱。
-        //
-        // 鼠标悬停时游戏会重新跑布局，所以看起来「一悬停就自动回正」，
-        // 那只是临时覆盖，焦点还在。
-        //
-        // 观战本来就不需要悬停抬牌，这里不设焦点，问题从源头消失。
-        _ = holder;
+        try
+        {
+            if (holder == null || !GodotObject.IsInstanceValid(holder))
+            {
+                return;
+            }
+
+            holder.SetTargetPosition(holder.TargetPosition + Vector2.Up * HoverLift);
+            holder.SetTargetScale(Vector2.One);
+            holder.SetTargetAngle(0f);
+        }
+        catch
+        {
+            // ignored
+        }
     }
 
     private static void OnHolderUnfocused(NHandCardHolder holder)
     {
-        NPlayerHand? hand = _lastHand;
-        if (hand == null || !GodotObject.IsInstanceValid(hand))
+        try
         {
-            return;
-        }
+            NPlayerHand? hand = _lastHand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            {
+                return;
+            }
 
-        SetFocused(hand, null);
-        LastFocusedIdxField?.SetValue(hand, -1);
-        hand.ForceRefreshCardIndices();
+            // 重排一次，把抬起的偏移还原。
+            hand.ForceRefreshCardIndices();
+        }
+        catch
+        {
+            // ignored
+        }
     }
 
     private static StringName BuildKey(IReadOnlyList<CardModel> cards)
