@@ -869,13 +869,33 @@ internal static class HandMirror
                 return;
             }
 
-            // 只要还挂着焦点就一律清掉。
+            // 判断依据改成「鼠标是否落在任意一张镜像牌上」。
             //
-            // 观战期间我们不主动设焦点（见 OnHolderFocused），所以读到的
-            // 必然是残留：来自游戏自己、或旧版本留下的状态。
-            // 不再判断「鼠标是否指着它」——那个判断一旦误判，翘起就会留住，
-            // 而用户看到的表现正是「悬停一下会回正，移开又错乱」。
-            _ = focused;
+            // 只看焦点牌会漏掉一种情况：鼠标从 A 牌直接滑到 B 牌时，
+            // A 的 Unfocused 可能先于 B 的 Focused 到达，或者干脆不来。
+            // 只要鼠标还在牌堆范围内，就说明是正常悬停，交给信号处理；
+            // 鼠标离开整个手牌区才算残留，这时才清。
+            try
+            {
+                Vector2 mouse = focused.GetViewport().GetMousePosition();
+
+                foreach (NHandCardHolder candidate in Holders)
+                {
+                    if (candidate == null || !GodotObject.IsInstanceValid(candidate))
+                    {
+                        continue;
+                    }
+
+                    if (candidate.Hitbox.GetGlobalRect().HasPoint(mouse))
+                    {
+                        return;
+                    }
+                }
+            }
+            catch
+            {
+                // 拿不到鼠标位置就按残留处理
+            }
 
             SetFocused(hand, null);
             LastFocusedIdxField?.SetValue(hand, -1);
@@ -889,33 +909,32 @@ internal static class HandMirror
         }
     }
 
-    // 悬停时把卡片抬起来的高度。
-    private const float HoverLift = 64f;
-
     /// <summary>
-    /// 悬停抬起，但不走 FocusedHolder。
+    /// 悬停抬起，完全沿用原版的实现路径：设置 FocusedHolder，
+    /// 让 NPlayerHand.RefreshLayout 的焦点分支去做抬高、放大和邻居让位。
     ///
-    /// 走 FocusedHolder 的话，RefreshLayout 会把它当成「被选中的牌」特殊处理：
-    /// 抬高、放大到 1.0、并让左右邻居按距离让位。这个状态靠 Unfocused 复位，
-    /// 而 holder 被销毁、鼠标移出窗口、观战切换都可能让那个回调不来，
-    /// 结果就是某张牌永久翘着、两边的牌挤在一起——位置错乱。
+    /// 原版那段是：
+    ///     int num = ActiveHolders.IndexOf(FocusedHolder);
+    ///     if (num > -1) { 邻居水平让位，最多 100px，按距离 1/4 衰减 }
+    ///     if (num == i) { SetAngleInstantly(0); SetScaleInstantly(1);
+    ///                     position.Y = -Hitbox.Size.Y * 0.5f + 2 }
     ///
-    /// 这里改成只动这一张：把它自己的目标位置往上挪。
-    /// RefreshLayout 只在手牌增删时重排，所以这个偏移能稳定保持；
-    /// 移开时触发一次重排就恢复。
+    /// 自己挪位置的话这些细节都要重写，还容易和 RefreshLayout 打架。
     /// </summary>
     private static void OnHolderFocused(NHandCardHolder holder)
     {
         try
         {
-            if (holder == null || !GodotObject.IsInstanceValid(holder))
+            NPlayerHand? hand = _lastHand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
             {
                 return;
             }
 
-            holder.SetTargetPosition(holder.TargetPosition + Vector2.Up * HoverLift);
-            holder.SetTargetScale(Vector2.One);
-            holder.SetTargetAngle(0f);
+            int index = Holders.IndexOf(holder);
+            SetFocused(hand, holder);
+            LastFocusedIdxField?.SetValue(hand, index);
+            hand.ForceRefreshCardIndices();
         }
         catch
         {
