@@ -420,7 +420,13 @@ internal static class SpectateUi
     /// </summary>
     public static void TickDisplayed()
     {
-        if (!DisplayedPlayer.IsActive)
+        // 不能用 DisplayedPlayer.IsActive 判断！
+        //
+        // 那个标志只在补丁的 Prefix → Finalizer 期间为 true（重定向真正生效的
+        // 那几毫秒）。心跳调用本方法时它永远是 false，于是整个每拍同步
+        // ——能量球、星数、三个牌堆的计数和消耗牌堆的显示——全部在第一行返回，
+        // 一次都没执行过。表现就是「打出消耗牌之后消耗牌堆迟迟不出现」。
+        if (!SpectateOverlay.IsOpen)
         {
             return;
         }
@@ -431,7 +437,9 @@ internal static class SpectateUi
             return;
         }
 
-        Player? shown = DisplayedPlayer.Target;
+        // 同样不能用 DisplayedPlayer.Target：它由补丁的 Push/Pop 维护，
+        // 作用域外通常是 null。观战目标从窗口本身取。
+        Player? shown = SpectateOverlay.Target;
         if (shown == null)
         {
             return;
