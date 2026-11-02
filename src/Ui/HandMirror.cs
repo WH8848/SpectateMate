@@ -486,6 +486,10 @@ internal static class HandMirror
                                 return;
                             }
 
+                            // 等待期间 RefreshLayout 已经调过 SetTargetPosition，
+                            // holder 的协程早就从起点滑到终点了（只是当时透明看不见）。
+                            // 这里必须把位置重新摆回起点，滑动才会在我们显示它的那一刻开始。
+                            captured.Position = spawnFrom;
                             captured.Modulate = Colors.White;
                             captured.SetTargetPosition(target);
                         }));
