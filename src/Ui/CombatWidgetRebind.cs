@@ -164,9 +164,20 @@ internal static class CombatWidgetRebind
         }
 
         container.AddChild(fresh);
+
         if (Find<NStarCounter>(ui, "_starCounter") is { } stars && GodotObject.IsInstanceValid(stars))
         {
             stars.Reparent(fresh, true);
+
+            // 必须把 _player 也换过去。
+            //
+            // NStarCounter._Process 里是：
+            //     Visible = Visible || ShouldAlwaysShowStarCounter || stars > 0;
+            // 一个自或表达式——一旦显示过就不会再收起。
+            // 如果 _player 还停在储君身上，辉星那一层会永远叠在能量球上，
+            // 退出观战后也一样（看上去就是「能量图标多了个辉星」）。
+            // Initialize 会重置 _player 并按新角色刷新可见性。
+            stars.Initialize(shown);
         }
 
         Set(ui, "_energyCounter", fresh);
