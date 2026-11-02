@@ -12,6 +12,8 @@ using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using MegaCrit.Sts2.Core.Saves;
+using MegaCrit.Sts2.Core.Settings;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
 using MegaCrit.Sts2.Core.Nodes.Pooling;
@@ -36,10 +38,30 @@ internal static class HandMirror
     private const float SpawnOffsetY = 180f;
 
     // 一张一张发牌的间隔。
-    // 原版 CardPileCmd.DrawInternal 里是 await Add(card, hand) 串行执行，
-    // 单张的补间时长由 AppendPileLerpTween 决定：正常模式 0.25 秒、
-    // 快速模式 0.1 秒、即时模式 0.01 秒。
-    private const float SpawnStaggerSeconds = 0.22f;
+    //
+    // 原版 CardPileCmd.DrawInternal 是 await Add(card, hand) 串行执行，
+    // 单张的补间时长由 AppendPileLerpTween 按加速档位给出：
+    //   Instant 0.01s / Fast 0.1s / 其它 0.25s
+    // 这里跟随同一个设置，观战时的发牌节奏才和原版一致。
+    private static float SpawnStaggerSeconds
+    {
+        get
+        {
+            try
+            {
+                return SaveManager.Instance.PrefsSave.FastMode switch
+                {
+                    FastModeType.Instant => 0.02f,
+                    FastModeType.Fast => 0.12f,
+                    _ => 0.22f,
+                };
+            }
+            catch
+            {
+                return 0.22f;
+            }
+        }
+    }
 
 
     private static readonly List<NHandCardHolder> Holders = new();
