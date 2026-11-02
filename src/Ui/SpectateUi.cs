@@ -186,6 +186,21 @@ internal static class SpectateUi
                 return;
             }
 
+            ulong localId = 0;
+            try
+            {
+                localId = RunManager.Instance.NetService.NetId;
+            }
+            catch
+            {
+                localId = 0;
+            }
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] apply: target={target?.NetId.ToString() ?? "null"} " +
+                $"localPlayer={_localPlayer?.NetId.ToString() ?? "null"} " +
+                $"netService={localId} shown={shown.NetId}");
+
             DisplayedPlayer.With(shown, () => Rebuild(shown));
         }
         catch (Exception e)
