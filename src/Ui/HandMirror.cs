@@ -386,6 +386,9 @@ internal static class HandMirror
 
         var next = new List<NHandCardHolder>(count);
 
+        // 本次重建之前是否已经在显示镜像：false 表示这是首次观战。
+        bool firstPaint = !_active;
+
         for (int i = 0; i < count; i++)
         {
             CardModel model = cards[i];
@@ -409,22 +412,24 @@ internal static class HandMirror
 
             if (created)
             {
-                // 关键：新建的 holder 默认停在 (0,0)。如果放着不管，
-                // 随后 ForceRefreshCardIndices -> RefreshLayout 只会设「目标位置」，
-                // holder 自己的 AnimPosition 协程会把 (0,0) 到扇形位置的位移
-                // 演成一次滑动动画 —— 首次观战时整排牌一起从左上角飞进来，
-                // 看起来就是闪烁跳动。这里直接把它摆到目标位置，
-                // 位移为 0，于是没有动画。
-                Vector2 spawn = HandPosHelper.GetPosition(count, i);
-                float spawnAngle = HandPosHelper.GetAngle(count, i);
-                Vector2 spawnScale = HandPosHelper.GetScale(count);
+                // 新建的 holder 默认停在 (0,0)。放着不管的话，
+                // 随后 RefreshLayout 只会设「目标位置」，holder 自己的 AnimPosition
+                // 协程会把 (0,0) 到扇形位置的位移演成滑动动画。
+                //
+                // 两种场景要区分：
+                //   首次观战（firstPaint）：所有牌都是新建的，必须直接落位，
+                //     否则整排牌会一起从左上角飞进来；
+                //   后续抽牌：新牌从抽牌堆的位置飞入手牌，复刻原版发牌动画。
+                Vector2 target = HandPosHelper.GetPosition(count, i);
+                float angle = HandPosHelper.GetAngle(count, i);
+                Vector2 scale = HandPosHelper.GetScale(count);
 
-                holder.Position = spawn;
-                holder.SetAngleInstantly(spawnAngle);
-                holder.SetScaleInstantly(spawnScale);
-                holder.SetTargetPosition(spawn);
-                holder.SetTargetAngle(spawnAngle);
-                holder.SetTargetScale(spawnScale);
+                holder.Position = firstPaint ? target : DrawPileLocal(layer);
+                holder.SetAngleInstantly(angle);
+                holder.SetScaleInstantly(scale);
+                holder.SetTargetPosition(target);
+                holder.SetTargetAngle(angle);
+                holder.SetTargetScale(scale);
             }
 
             next.Add(holder);
@@ -454,6 +459,28 @@ internal static class HandMirror
         Diag(
             $"showing {Holders.Count} cards | ctrMod={ctr?.Modulate} " +
             $"ctrKids={ctr?.GetChildCount()} | labels={DescribeIndexLabels()}");
+    }
+
+    /// <summary>
+    /// 抽牌堆中心在镜像层坐标系里的位置，用作新牌飞入的起点。
+    /// 换算失败时退回层中心，宁可飞得短一点也不要不显示。
+    /// </summary>
+    private static Vector2 DrawPileLocal(Control layer)
+    {
+        try
+        {
+            if (NCombatRoom.Instance?.Ui?.DrawPile is not { } draw)
+            {
+                return layer.Size * 0.5f;
+            }
+
+            Vector2 global = draw.GlobalPosition + draw.Size * 0.5f;
+            return layer.GetGlobalTransform().AffineInverse() * global;
+        }
+        catch
+        {
+            return layer.Size * 0.5f;
+        }
     }
 
     private static NHandCardHolder? CreateHolder(NPlayerHand hand, Control layer, CardModel model)
