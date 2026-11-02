@@ -662,27 +662,6 @@ internal static class HandMirror
                 $"[{ModEntry.ModId}] layout: count={Holders.Count} focus={focusIdx} " +
                 $"cards=[{ids}]");
 
-            // 逐个打印位置，用来判断错乱是「holder 数量不对」还是「某几张没跟上」。
-            var positions = new System.Text.StringBuilder();
-
-            for (int i = 0; i < Holders.Count; i++)
-            {
-                NHandCardHolder h = Holders[i];
-
-                if (h == null || !GodotObject.IsInstanceValid(h))
-                {
-                    positions.Append('#').Append(i).Append("=INVALID; ");
-                    continue;
-                }
-
-                positions.Append('#').Append(i)
-                    .Append(" pos=").Append(h.Position)
-                    .Append(" tgt=").Append(h.TargetPosition)
-                    .Append("; ");
-            }
-
-            ModEntry.Log.Info($"[{ModEntry.ModId}] positions: {positions}");
-
             // ActiveHolders 实际返回什么，RefreshLayout 就用什么算间距。
             var active = hand.ActiveHolders;
             ModEntry.Log.Info(
@@ -696,6 +675,38 @@ internal static class HandMirror
 
         // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
         hand.ForceRefreshCardIndices();
+
+        // 排版之后再打印位置：排版前 TargetPosition 还是上一次的值（甚至是 0,0），
+        // 拿那个快照判断目标是否正确会得出完全错误的结论。
+        try
+        {
+            var after = new System.Text.StringBuilder();
+
+            for (int i = 0; i < Holders.Count; i++)
+            {
+                NHandCardHolder h = Holders[i];
+
+                if (h == null || !GodotObject.IsInstanceValid(h))
+                {
+                    after.Append('#').Append(i).Append("=INVALID; ");
+                    continue;
+                }
+
+                Vector2 expect = HandPosHelper.GetPosition(Holders.Count, i);
+
+                after.Append('#').Append(i)
+                    .Append(" pos=").Append(h.Position)
+                    .Append(" tgt=").Append(h.TargetPosition)
+                    .Append(" expect=").Append(expect)
+                    .Append("; ");
+            }
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] layout after: {after}");
+        }
+        catch
+        {
+            // ignored
+        }
 
         // 必须在 ForceRefreshCardIndices 之后执行：_active 为 false 的瞬间
         // RefreshLayout 会把原生编号写回来。
