@@ -266,6 +266,9 @@ public static class SpectateOverlay
             _escapeWatch?.Stop();
             _escapeWatch = null;
 
+            // 观战结束，消耗牌堆的显示目标重新从当前数量推起。
+            CombatWidgetRebind.ResetExhaustVisibilityCache();
+
             // overlay 自己的心跳会随 layer 一起销毁，这里换成常驻的那个。
             EnsureIdleRefresh();
 

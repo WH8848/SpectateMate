@@ -164,6 +164,18 @@ internal static class CombatWidgetRebind
     /// 既不经过 Initialize 也不经过 AddCard，按钮就一直藏着——
     /// 观战时会觉得「进阶之灾消耗了，但消耗牌堆没出现」。
     /// </summary>
+    // 上一次同步给消耗牌堆按钮的目标状态。
+    //
+    // 不能用 Visible 判断：AnimIn / AnimOut 是补间动画，动画期间 Visible 不变，
+    // 于是每拍都会再触发一次，按钮被反复推动——看起来就是一直在跳动，
+    // 甚至停在半路（打出消耗牌后数量对了，按钮却被后续的 AnimOut 推走）。
+    private static bool? _exhaustShown;
+
+    public static void ResetExhaustVisibilityCache()
+    {
+        _exhaustShown = null;
+    }
+
     public static void SyncExhaustVisibility(NCombatCardPile? pile, int count)
     {
         if (pile is not NExhaustPileButton exhaust || !GodotObject.IsInstanceValid(exhaust))
@@ -171,14 +183,20 @@ internal static class CombatWidgetRebind
             return;
         }
 
-        if (count > 0)
+        bool shouldShow = count > 0;
+
+        if (_exhaustShown == shouldShow)
         {
-            if (!exhaust.Visible)
-            {
-                exhaust.AnimIn();
-            }
+            return;
         }
-        else if (exhaust.Visible)
+
+        _exhaustShown = shouldShow;
+
+        if (shouldShow)
+        {
+            exhaust.AnimIn();
+        }
+        else
         {
             exhaust.AnimOut();
         }
