@@ -1,63 +1,61 @@
 # 发布到 Steam 创意工坊
 
-Slay the Spire 2 的 AppId 是 **2868840**。游戏本身只负责**下载并加载**工坊内容，
-没有上传界面，所以要用 Steam 官方的 `steamcmd` 上传。
+Slay the Spire 2 的 AppId 是 **2868840**。官方提供了专用上传器，不要用 steamcmd。
 
-## 一次性准备
+- 上传器：https://github.com/megacrit/sts2-mod-uploader
+- 教程：https://tutorials.sts2modding.com/docs/11-upload-workshop/
 
-1. 下载 [steamcmd](https://developer.valvesoftware.com/wiki/SteamCMD) 解压到 `C:\steamcmd`
-2. 首次运行会自更新，然后登录一次：
-   ```
-   C:\steamcmd\steamcmd.exe +login 你的Steam用户名
-   ```
-   输入密码和 Steam 令牌后 `quit`
-3. 准备一张 `preview.png` 放在本目录（工坊封面，建议 512×512 或 16:9）
+## 当前条目
 
-## 首次发布
+**Workshop ID: 3832499210**
+https://steamcommunity.com/sharedfiles/filedetails/?id=3832499210
+
+## 工作区结构
+
+上传器在 `E:\MOD\sts2\uploader\SpectateMate\`：
+
+```
+SpectateMate/
+  workshop.json        条目配置（标题/描述/可见性/tags/依赖）
+  content/             ↑ 上传的文件
+    mod_manifest.json
+    SpectateMate.dll
+  image.png            封面，必须 < 1MB
+  mod_id.txt           首次上传后自动生成，后续更新靠它定位条目
+  README.md            上传器自带的说明
+```
+
+## 更新流程
 
 ```powershell
-.\publish.ps1
+# 1. 重新编译（会自动部署到 mods 目录）
+cd "E:\MOD\sts2\godot_project\Spectate teammate"
+dotnet build -c Release -v m
+
+# 2. 把新文件放进工作区
+copy "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\（功能）右键队友头像观战\mod_manifest.json" "E:\MOD\sts2\uploader\SpectateMate\content\"
+copy "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\（功能）右键队友头像观战\SpectateMate.dll" "E:\MOD\sts2\uploader\SpectateMate\content\"
+
+# 3. 改 workshop.json 里的 changeNote，然后上传
+cd "E:\MOD\sts2\uploader"
+.\ModUploader.exe upload -w SpectateMate
 ```
 
-脚本会：
-1. `dotnet build -c Release` 重新打包
-2. 把 `mod_manifest.json` 和 `SpectateMate.dll` 复制到 `content\`
-3. 调 `steamcmd +workshop_build_item workshop_build_item.vdf`
+## workshop.json 要点
 
-上传成功后 steamcmd 会打印一个新的 `publishedfileid`，**把它填回
-`workshop_build_item.vdf` 的 `publishedfileid`**，否则下次发布会重复创建条目。
+| 字段 | 说明 |
+|---|---|
+| `title` | 工坊标题 |
+| `description` | 支持 `<br>` 换行 |
+| `visibility` | `public` / `private` / `unlisted` / `friends_only` |
+| `tags` | **上传后无法在工坊修改**，要一次定好 |
+| `dependencies` | **工坊 ID**（不是 mod id），RitsuLib 是 `3747602295` |
+| `changeNote` | 更新说明 |
 
-## 后续更新
+**注意**：json 里写了的字段会覆盖工坊上的内容。想保留工坊上手动改的值，就把对应字段删掉或设成 `null`。
 
-改完代码后重新跑一次 `publish.ps1` 即可，`publishedfileid` 保持不变，
-工坊条目会被更新，`changenote` 里写的更新说明会显示在工坊页面。
+## 第一次踩到的坑
 
-## 上传内容的要求
-
-游戏扫描模组的规则是「目录下每个 `.json` 都当作清单读」，
-所以清单文件名不一定要叫 `mod_manifest.json`，但**必须有 `id` 字段**。
-我们上传的就是：
-
-```
-content/
-  mod_manifest.json     ← 含 id / version / min_game_version / dependencies
-  SpectateMate.dll      ← 编译产物
-```
-
-没有 `.pck`（manifest 里 `has_pck: false`）。
-
-## 依赖声明
-
-`mod_manifest.json` 里已经写了：
-
-```json
-"dependencies": [{ "id": "STS2-RitsuLib" }]
-```
-
-玩家订阅后，游戏会提示他们同时订阅 RitsuLib，否则本模组不会加载。
-
-## 版本更新时记得改
-
-- `mod_manifest.json` 的 `version`
-- `mod_manifest.json` 的 `min_game_version`（游戏大版本变了才需要）
-- `workshop_build_item.vdf` 的 `changenote`
+- 用 steamcmd 上传 → 匿名账号无法创建条目，实名也要交互输密码，走不通
+- 上传器所在路径**不能含中文**，否则 Steam 直接 fatal error
+- 封面是 **`image.png`**（不是 jpg），必须小于 1MB
