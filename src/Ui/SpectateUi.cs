@@ -100,6 +100,8 @@ internal static class SpectateUi
     /// </summary>
     public static NGlobalUi? GlobalUi => _globalUi;
 
+    public static RunState? RunState => _runState;
+
     public static NPlayerHand? Hand
     {
         get

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Text;
 using Godot;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Context;
+using SpectateMate.Core;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
@@ -50,6 +52,7 @@ public static class SpectateOverlay
     private static Godot.Timer? _refresh;
     private static Godot.Timer? _escapeWatch;
     private static bool _wasInCombat;
+    private static bool _lastMyTurn;
 
     private static Player? _target;
     private static string _cachedName = string.Empty;
@@ -94,6 +97,28 @@ public static class SpectateOverlay
         Open(player);
     }
 
+    /// <summary>现在是否轮到我出牌。LocalContext 此时指向的是真实的本地玩家。</summary>
+    private static bool IsMyTurn()
+    {
+        try
+        {
+            if (!CombatManager.Instance.IsInProgress)
+            {
+                return false;
+            }
+
+            Player? me = SpectateUi.RunState != null
+                ? LocalContext.GetMe(SpectateUi.RunState.Players)
+                : null;
+
+            return me?.PlayerCombatState?.Phase == PlayerTurnPhase.Play;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool IsInCombat()
     {
         try
@@ -114,6 +139,7 @@ public static class SpectateOverlay
         {
             _target = player;
             AvatarHighlight.Set(player);
+            _lastMyTurn = IsMyTurn();
 
             try
             {
@@ -345,6 +371,33 @@ public static class SpectateOverlay
         try
         {
             AvatarHighlight.Refresh();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        // 「下回合自动退出」：只在「从不是我的回合」变成「是我的回合」时触发，
+        // 否则观战一开始就轮到自己行动的话会被立刻关掉。
+        try
+        {
+            if (SpectateSettings.AutoExitNextTurn)
+            {
+                bool myTurnNow = IsMyTurn();
+
+                if (!_lastMyTurn && myTurnNow)
+                {
+                    ModEntry.Log.Info($"[{ModEntry.ModId}] my turn started; leaving spectate");
+                    Close();
+                    return;
+                }
+
+                _lastMyTurn = myTurnNow;
+            }
+            else
+            {
+                _lastMyTurn = IsMyTurn();
+            }
         }
         catch
         {

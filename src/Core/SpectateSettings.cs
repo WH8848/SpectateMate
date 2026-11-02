@@ -7,10 +7,13 @@ using STS2RitsuLib.Utils.Persistence;
 
 namespace SpectateMate.Core;
 
-/// <summary>持久化的观战设置。目前只有退出快捷键。</summary>
+/// <summary>持久化的观战设置。</summary>
 public sealed class SpectateSettingsData
 {
     public string ExitKey { get; set; } = nameof(Key.Escape);
+
+    /// <summary>下一回合开始时自动退出观战。默认关闭。</summary>
+    public bool AutoExitNextTurn { get; set; }
 }
 
 /// <summary>
@@ -38,6 +41,22 @@ public static class SpectateSettings
             catch
             {
                 return _fallback;
+            }
+        }
+    }
+
+    /// <summary>下一回合开始时是否自动退出观战。</summary>
+    public static bool AutoExitNextTurn
+    {
+        get
+        {
+            try
+            {
+                return Current.AutoExitNextTurn;
+            }
+            catch
+            {
+                return false;
             }
         }
     }
@@ -100,6 +119,17 @@ public static class SpectateSettings
                     allowModifierCombos: true,
                     allowModifierOnly: false,
                     distinguishModifierSides: false,
-                    description: ModSettingsText.Literal("观战时按下这个键退出，默认 Esc。"))));
+                    description: ModSettingsText.Literal("观战时按下这个键退出，默认 Esc。"))
+                .AddToggle(
+                    "auto_exit_next_turn",
+                    ModSettingsText.Literal("下回合自动退出观战"),
+                    new ModSettingsValueBinding<SpectateSettingsData, bool>(
+                        ModEntry.ModId,
+                        DataKey,
+                        SaveScope.Global,
+                        s => s.AutoExitNextTurn,
+                        (s, value) => s.AutoExitNextTurn = value),
+                    description: ModSettingsText.Literal(
+                        "开启后，轮到你行动的瞬间自动结束观战，回到自己的视角。默认关闭。"))));
     }
 }
