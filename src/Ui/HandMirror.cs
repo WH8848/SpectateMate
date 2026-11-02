@@ -827,9 +827,26 @@ internal static class HandMirror
                 return;
             }
 
+            // 只有「鼠标真的还压在它身上」才算有效焦点。
+            //
+            // 之前只检查「还在 Holders 里」，而焦点牌当然在列表里，
+            // 所以永远不满足清理条件，翘起状态一直留着。
+            // 用鼠标位置对照它的命中框，才能分辨出这是残留还是真的在悬停。
             if (GodotObject.IsInstanceValid(focused) && Holders.Contains(focused))
             {
-                return;
+                try
+                {
+                    Vector2 mouse = focused.GetViewport().GetMousePosition();
+
+                    if (focused.Hitbox.GetGlobalRect().HasPoint(mouse))
+                    {
+                        return;
+                    }
+                }
+                catch
+                {
+                    // 拿不到鼠标位置就按残留处理
+                }
             }
 
             FocusedHolderField?.SetValue(hand, null);

@@ -70,7 +70,7 @@ public static class SpectateChoice
         _filter = filter;
         _owner = player;
 
-        _lastPileCount = -1;
+        _lastPileSignature = string.Empty;
     }
 
     public static void BeginHandSelection(Player player, CardSelectorPrefs prefs, Func<CardModel, bool>? filter)
@@ -142,8 +142,37 @@ public static class SpectateChoice
     }
 
     /// <summary>每拍调用：他在选牌就打开只读界面，选完就关掉。</summary>
-    /// <summary>上一次观察到的候选牌堆数量，用于判定他是否已经选完。</summary>
-    private static int _lastPileCount = -1;
+    /// <summary>
+    /// 上一次观察到的候选牌堆内容签名，用于判定他是否已经选完。
+    ///
+    /// 不能用数量：冲锋的效果是 TransformTo 把选中的牌替换成另一张，
+    /// 牌堆总数不变，只比数量永远发现不了。
+    /// </summary>
+    private static string _lastPileSignature = string.Empty;
+
+    private static string PileSignature(CardPile? pile)
+    {
+        if (pile == null)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+
+            foreach (CardModel card in pile.Cards)
+            {
+                sb.Append(card.Id.Entry).Append(',');
+            }
+
+            return sb.ToString();
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
 
     public static void Tick(Player? target, NetScreenType screenType)
     {
@@ -157,30 +186,19 @@ public static class SpectateChoice
         // 牌堆内容变少意味着他选走了一张，这是最直接的信号。
         if (_mode == Mode.CombatPile && _pile != null)
         {
-            int count = -1;
+            string signature = PileSignature(_pile);
 
-            try
+            if (signature.Length > 0)
             {
-                count = _pile.Cards.Count;
-            }
-            catch
-            {
-                count = -1;
-            }
-
-            if (count >= 0)
-            {
-                if (_lastPileCount >= 0 && count < _lastPileCount)
+                if (_lastPileSignature.Length > 0 && signature != _lastPileSignature)
                 {
-                    ModEntry.Log.Info(
-                        $"[{ModEntry.ModId}] choice pile shrank {_lastPileCount} -> {count}; closing");
+                    ModEntry.Log.Info($"[{ModEntry.ModId}] choice pile changed; closing");
 
                     Close(clearMode: true);
-                    _lastPileCount = -1;
                     return;
                 }
 
-                _lastPileCount = count;
+                _lastPileSignature = signature;
             }
         }
 
@@ -495,7 +513,7 @@ public static class SpectateChoice
             _pile = null;
             _prefs = null;
             _filter = null;
-            _lastPileCount = -1;
+            _lastPileSignature = string.Empty;
         }
     }
 
