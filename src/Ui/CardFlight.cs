@@ -30,11 +30,17 @@ public static class CardFlight
 {
     private const float PlayToPileSeconds = 0.2f;
 
+    // 卡片在播放区的最低停留时间，对应原版打完牌后那 0.4~0.5 秒的等待。
+    private const ulong PlayHoldMs = 400;
+
     private sealed class SettlingCard
     {
         public NHandCardHolder Holder = null!;
         public NCard Card = null!;
         public CardModel Model = null!;
+
+        /// <summary>最早可以离开播放区的时间戳（毫秒）。</summary>
+        public ulong ReadyAtMs;
     }
 
     private static readonly List<SettlingCard> Settling = new();
@@ -67,6 +73,12 @@ public static class CardFlight
             if (!GodotObject.IsInstanceValid(item.Card) || !GodotObject.IsInstanceValid(item.Holder))
             {
                 Settling.Remove(item);
+                continue;
+            }
+
+            // 还没到最低停留时间就继续等，别急着送走。
+            if (Godot.Time.GetTicksMsec() < item.ReadyAtMs)
+            {
                 continue;
             }
 
@@ -202,6 +214,17 @@ public static class CardFlight
                 Holder = holder,
                 Card = card,
                 Model = card.Model!,
+
+                // 最低停留时间。
+                //
+                // 原版打完牌后还有一整套：淡出 -> 暂停 0.1~0.2 秒 ->
+                // 换成播放区样式 -> 从下方升起 -> 再等 0.4~0.5 秒。
+                // 总共接近一秒，卡片在播放区是「摆在那里给你看清」的。
+                //
+                // 我们只做了飞到播放区那 0.2 秒，随后就盯着 Pile 的变化。
+                // 他结算得越快（比如开了加速模式），Pile 变得越早，
+                // 卡片一闪就飞走了。这里补一个保底停留，让观感回到正常节奏。
+                ReadyAtMs = Godot.Time.GetTicksMsec() + PlayHoldMs,
             });
         }
         catch
