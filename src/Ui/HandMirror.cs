@@ -155,6 +155,7 @@ internal static class HandMirror
             }
 
             CardFlight.UpdateSettling();
+            PruneStaleFocus();
 
             StringName key = BuildKey(cards);
             if (key != _key)
@@ -800,6 +801,47 @@ internal static class HandMirror
         }
 
         Holders.Clear();
+    }
+
+    /// <summary>
+    /// 清掉失效的焦点。
+    ///
+    /// RefreshLayout 会特殊对待 FocusedHolder：把它抬高、放大到 1.0，
+    /// 并让左右邻居让位。鼠标离开时本应由 OnHolderUnfocused 复位，
+    /// 但 holder 被销毁、鼠标移出窗口、观战切换等情况下这个回调不会来，
+    /// 焦点就永久停在某张牌上——表现出来就是「那张牌一直翘着，
+    /// 两边的牌挤在一起」，也就是洗牌/发牌后看到的位置错乱。
+    /// </summary>
+    private static void PruneStaleFocus()
+    {
+        try
+        {
+            NPlayerHand? hand = _lastHand;
+            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            {
+                return;
+            }
+
+            if (FocusedHolderField?.GetValue(hand) is not NHandCardHolder focused)
+            {
+                return;
+            }
+
+            if (GodotObject.IsInstanceValid(focused) && Holders.Contains(focused))
+            {
+                return;
+            }
+
+            FocusedHolderField?.SetValue(hand, null);
+            LastFocusedIdxField?.SetValue(hand, -1);
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] cleared stale focus");
+            hand.ForceRefreshCardIndices();
+        }
+        catch
+        {
+            // ignored
+        }
     }
 
     private static void OnHolderFocused(NHandCardHolder holder)
