@@ -626,6 +626,35 @@ internal static class HandMirror
         _active = true;
         _hoverId = null;
 
+        // 诊断：列出这次参与布局的牌，以及焦点落在谁身上。
+        // 位置错乱时这一行能直接说明是「焦点还指着某张牌」，还是「有额外的
+        // holder 混进了 ActiveHolders」。
+        try
+        {
+            var ids = new System.Text.StringBuilder();
+
+            foreach (NHandCardHolder h in Holders)
+            {
+                if (h != null && GodotObject.IsInstanceValid(h))
+                {
+                    ids.Append(h.CardNode?.Model?.Id.Entry ?? "?").Append(',');
+                }
+            }
+
+            NHandCardHolder? focused = GetFocused(hand);
+            int focusIdx = focused != null && Holders.Contains(focused)
+                ? Holders.IndexOf(focused)
+                : -1;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] layout: count={Holders.Count} focus={focusIdx} " +
+                $"cards=[{ids}]");
+        }
+        catch
+        {
+            // ignored
+        }
+
         // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
         hand.ForceRefreshCardIndices();
 
