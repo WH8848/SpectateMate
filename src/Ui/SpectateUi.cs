@@ -400,6 +400,45 @@ internal static class SpectateUi
     }
 
     /// <summary>
+    /// 只同步消耗牌堆按钮的显示，用本地玩家的实际数量。
+    ///
+    /// 非观战状态下也会被心跳调用（每 0.05 秒一次），用来兜住
+    /// CardAddFinished 没绑上、按钮该出现却不出现的情况。
+    /// 代价只有一次反射查找 + 一次整数比较。
+    /// </summary>
+    public static void SyncExhaustPileOnly()
+    {
+        NCombatUi? ui = CombatUi;
+        if (ui == null || !GodotObject.IsInstanceValid(ui))
+        {
+            return;
+        }
+
+        Player? me = _localPlayer;
+        if (me == null)
+        {
+            return;
+        }
+
+        if (Find<NCombatPilesContainer>(ui, "_combatPilesContainer") is not { } piles)
+        {
+            return;
+        }
+
+        int count;
+        try
+        {
+            count = PileType.Exhaust.GetPile(me).Cards.Count;
+        }
+        catch
+        {
+            return;
+        }
+
+        CombatWidgetRebind.SyncExhaustVisibility(piles.ExhaustPile, count);
+    }
+
+    /// <summary>
     /// 退出观战后把状态还回自己：该灰就灰、该下移就下移。
     /// </summary>
     public static void RestoreOwnHandState()

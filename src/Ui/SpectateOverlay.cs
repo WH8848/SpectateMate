@@ -257,10 +257,17 @@ public static class SpectateOverlay
         {
             // QueueFree only takes effect at frame end; until then the old timers
             // would keep calling the static Refresh() against the NEW panel.
-            _refresh?.Stop();
+            // 心跳不在这里停。
+            //
+            // 观战期间 SyncExhaustVisibility 会按被观战者的数量收起消耗牌堆按钮。
+            // 退出后如果只靠 CardAddFinished 事件恢复，一旦事件没绑上（这条路径
+            // 已经出过多次问题），按钮就再也不会出现。
+            // 保留心跳、在非观战状态下只做一次消耗牌同步，可以彻底绕开这个依赖。
             _escapeWatch?.Stop();
-            _refresh = null;
             _escapeWatch = null;
+
+            // overlay 自己的心跳会随 layer 一起销毁，这里换成常驻的那个。
+            EnsureIdleRefresh();
 
             HandMirror.Hide(SpectateUi.Hand);
             FreeCards();
@@ -350,8 +357,67 @@ public static class SpectateOverlay
         }
     }
 
+    /// <summary>
+    /// 常驻的轻量定时器，只在非观战时同步消耗牌堆按钮。
+    ///
+    /// 为什么不复用 _refresh：它挂在 overlay 的 layer 上，
+    /// Close 一销毁 layer，定时器跟着没，退出观战后就没人兜底了。
+    ///
+    /// 为什么需要它：观战期间 SyncExhaustVisibility 会按被观战者的数量
+    /// 收起消耗牌堆按钮；退出后如果只靠 CardAddFinished 事件恢复，
+    /// 一旦事件没绑上，按钮就再也不会出现（这条路径已经反复出问题）。
+    /// 每 0.2 秒比一次实际数量，代价可以忽略。
+    /// </summary>
+    private static Godot.Timer? _idleRefresh;
+
+    private static void EnsureIdleRefresh()
+    {
+        try
+        {
+            if (_idleRefresh != null && GodotObject.IsInstanceValid(_idleRefresh))
+            {
+                return;
+            }
+
+            Node? host = NGame.Instance;
+            if (host == null)
+            {
+                return;
+            }
+
+            _idleRefresh = new Godot.Timer { WaitTime = 0.2f, OneShot = false };
+            host.AddChild(_idleRefresh);
+            _idleRefresh.Timeout += () =>
+            {
+                if (IsOpen)
+                {
+                    return;
+                }
+
+                try
+                {
+                    SpectateUi.SyncExhaustPileOnly();
+                }
+                catch
+                {
+                    // ignored
+                }
+            };
+            _idleRefresh.Start();
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] idle timer failed: {e.Message}");
+        }
+    }
+
     private static void Refresh()
     {
+        if (!IsOpen)
+        {
+            return;
+        }
+
         if (_target == null || _root == null || !GodotObject.IsInstanceValid(_root))
         {
             return;
