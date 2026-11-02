@@ -291,12 +291,16 @@ public static class SpectateOverlay
             _handKey = string.Empty;
             AvatarHighlight.Set(null);
 
+            ModEntry.Log.Info($"[{ModEntry.ModId}] close: restoring bindings");
+
             // 先恢复手牌状态：Apply(null) 里有一串 rebind，任何一处抛异常
             // 都会跳过它，导致手牌一直停在灰色/下移状态。
             SpectateUi.RestoreOwnHandState();
             SpectateChoice.Reset();
             SpectateUi.SetInteraction(true);
             SpectateUi.Apply(null);
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] close: bindings restored");
         }
     }
 
