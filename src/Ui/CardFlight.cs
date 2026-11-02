@@ -11,6 +11,7 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Pooling;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Nodes.Vfx.Cards;
 
 namespace SpectateMate.Ui;
 
@@ -221,6 +222,14 @@ public static class CardFlight
     {
         try
         {
+            // 消耗不是飞行：原版 CardPileCmd 对 Exhaust 走的是 NCardExhaustVfx
+            // （卡片被侵蚀、碎裂并伴随粒子），和飞向弃牌堆/抽牌堆完全是两套特效。
+            if (pile == PileType.Exhaust)
+            {
+                PlayExhaust(item);
+                return;
+            }
+
             Detached.Remove(item.Holder);
 
             Player? owner = null;
@@ -287,6 +296,39 @@ public static class CardFlight
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
+            DestroyHolder(item.Holder);
+        }
+    }
+
+    /// <summary>
+    /// 原地播消耗特效：Create 会把卡片从当前父节点摘走并塞进特效内部，
+    /// 之后由 PlayAnimation 接管销毁，所以这里不能再去回收卡片。
+    /// </summary>
+    private static void PlayExhaust(SettlingCard item)
+    {
+        try
+        {
+            Detached.Remove(item.Holder);
+
+            NCardExhaustVfx? vfx = NCardExhaustVfx.Create(item.Card);
+            if (vfx == null)
+            {
+                DestroyHolder(item.Holder);
+                return;
+            }
+
+            NCombatRoom.Instance?.Ui?.AddChildSafely(vfx);
+            TaskHelper.RunSafely(vfx.PlayAnimation());
+
+            // holder 只是空壳，卡片已经归特效管。
+            if (item.Holder != null && GodotObject.IsInstanceValid(item.Holder))
+            {
+                item.Holder.QueueFree();
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] exhaust vfx failed: {e.Message}");
             DestroyHolder(item.Holder);
         }
     }
