@@ -35,8 +35,11 @@ internal static class HandMirror
 
     private const float SpawnOffsetY = 180f;
 
-    // 一张一张发牌的间隔。原版大约 0.08~0.12 秒一张。
-    private const float SpawnStaggerSeconds = 0.09f;
+    // 一张一张发牌的间隔。
+    // 原版 CardPileCmd.DrawInternal 里是 await Add(card, hand) 串行执行，
+    // 单张的补间时长由 AppendPileLerpTween 决定：正常模式 0.25 秒、
+    // 快速模式 0.1 秒、即时模式 0.01 秒。
+    private const float SpawnStaggerSeconds = 0.22f;
     // 与原版 NCard.AnimCardToPlayPile 一致：0.2s、缩放到 0.8
     private const float PickUpSeconds = 0.08f;
     private const float PickUpLift = 40f;
@@ -432,7 +435,11 @@ internal static class HandMirror
 
                 holder.Position = DrawPileLocal(layer);
                 holder.SetAngleInstantly(angle);
-                holder.SetScaleInstantly(scale);
+
+                // 原版对「从牌堆进手牌」的卡片做了 From(Vector2.Zero)，
+                // 也就是先缩到没有再弹出来。这里同样从 0 开始，
+                // 由 holder 自身的缩放补间放到目标大小。
+                holder.SetScaleInstantly(Vector2.Zero);
                 holder.SetTargetAngle(angle);
                 holder.SetTargetScale(scale);
 
