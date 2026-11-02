@@ -169,14 +169,15 @@ internal static class CombatWidgetRebind
         {
             stars.Reparent(fresh, true);
 
-            // 必须把 _player 也换过去。
+            // 必须把 _player 也换过去，而且要先手动复位可见性。
             //
-            // NStarCounter._Process 里是：
-            //     Visible = Visible || ShouldAlwaysShowStarCounter || stars > 0;
-            // 一个自或表达式——一旦显示过就不会再收起。
-            // 如果 _player 还停在储君身上，辉星那一层会永远叠在能量球上，
-            // 退出观战后也一样（看上去就是「能量图标多了个辉星」）。
-            // Initialize 会重置 _player 并按新角色刷新可见性。
+            // NStarCounter 里两处都是自或：
+            //   RefreshVisibility: Visible = Visible || ShouldAlwaysShowStarCounter || stars > 0
+            //   _Process:          同上
+            // 一旦显示过就再也不会自动收起。所以光调 Initialize 是关不掉的，
+            // 它内部的 RefreshVisibility 也会被那个 true 锁死。
+            // 必须先显式置 false，再让 Initialize 按新角色重新判定。
+            stars.Visible = false;
             stars.Initialize(shown);
         }
 
