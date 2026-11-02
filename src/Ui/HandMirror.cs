@@ -84,10 +84,43 @@ internal static class HandMirror
     public static IReadOnlyList<NHandCardHolder> MirrorHolders =>
         _active && Holders.Count > 0 ? Holders : Array.Empty<NHandCardHolder>();
 
-    private static readonly System.Reflection.FieldInfo? FocusedHolderField =
-        typeof(NPlayerHand).GetField(
-            "<FocusedHolder>k__BackingField",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    // FocusedHolder 是自动属性（public NHandCardHolder? FocusedHolder { get; private set; }）。
+    //
+    // 之前按 backing field 反射（<FocusedHolder>k__BackingField），虽然名字是对的，
+    // 但一路下来读写焦点始终没起作用——残留焦点清不掉，
+    // 于是 RefreshLayout 一直把某张牌当成"正被悬停"：抬高、放大、挤开邻居。
+    // 改为直接走属性和它的私有 setter，路径更短也更可靠。
+    private static readonly System.Reflection.PropertyInfo? FocusedHolderProp =
+        typeof(NPlayerHand).GetProperty(
+            "FocusedHolder",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+
+    private static readonly System.Reflection.MethodInfo? FocusedHolderSetter =
+        FocusedHolderProp?.GetSetMethod(nonPublic: true);
+
+    private static NHandCardHolder? GetFocused(NPlayerHand hand)
+    {
+        try
+        {
+            return FocusedHolderProp?.GetValue(hand) as NHandCardHolder;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void SetFocused(NPlayerHand hand, NHandCardHolder? holder)
+    {
+        try
+        {
+            FocusedHolderSetter?.Invoke(hand, new object?[] { holder });
+        }
+        catch
+        {
+            // ignored
+        }
+    }
 
     private static readonly System.Reflection.FieldInfo? LastFocusedIdxField =
         typeof(NPlayerHand).GetField(
@@ -831,7 +864,7 @@ internal static class HandMirror
                 return;
             }
 
-            if (FocusedHolderField?.GetValue(hand) is not NHandCardHolder focused)
+            if (GetFocused(hand) is not { } focused)
             {
                 return;
             }
@@ -858,7 +891,7 @@ internal static class HandMirror
                 }
             }
 
-            FocusedHolderField?.SetValue(hand, null);
+            SetFocused(hand, null);
             LastFocusedIdxField?.SetValue(hand, -1);
 
             ModEntry.Log.Info($"[{ModEntry.ModId}] cleared stale focus");
@@ -882,7 +915,7 @@ internal static class HandMirror
         // list index instead. RefreshLayout only needs FocusedHolder for the
         // identity check and _lastFocusedHolderIdx for the default-focus fallback.
         int index = Holders.IndexOf(holder);
-        FocusedHolderField?.SetValue(hand, holder);
+        SetFocused(hand, holder);
         LastFocusedIdxField?.SetValue(hand, index);
         hand.ForceRefreshCardIndices();
     }
@@ -895,7 +928,7 @@ internal static class HandMirror
             return;
         }
 
-        FocusedHolderField?.SetValue(hand, null);
+        SetFocused(hand, null);
         LastFocusedIdxField?.SetValue(hand, -1);
         hand.ForceRefreshCardIndices();
     }
