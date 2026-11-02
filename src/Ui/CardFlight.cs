@@ -132,8 +132,7 @@ public static class CardFlight
 
                 case PileType.Hand:
                     // 牌被打消 / 退回手牌：手牌镜像会重新建出这张，播放区这份直接回收。
-                    Settling.Remove(item);
-                    DestroyHolder(item.Holder);
+                    DiscardSettled(item);
                     break;
 
                 case null or PileType.None when IsPower(item.Model):
@@ -144,9 +143,8 @@ public static class CardFlight
                     // 注意要把 PileType.None 和 null 都算上：
                     // 卡牌消失时 Model.Pile 可能退化成 Pile 对象且 Type = None，
                     // 只匹配 null 会漏掉这种情况（上一版就是这么漏的）。
-                    Settling.Remove(item);
                     ModEntry.Log.Info($"[{ModEntry.ModId}] power card settled: {item.Model.Id.Entry}");
-                    DestroyHolder(item.Holder);
+                    DiscardSettled(item);
                     break;
 
                 // Play：他还在选择目标或结算中，停在播放区继续等。
@@ -359,6 +357,40 @@ public static class CardFlight
             ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
             DestroyHolder(item.Holder);
         }
+    }
+
+    /// <summary>
+    /// 回收一张已经结束停留的牌，连同卡片本体一起。
+    ///
+    /// 不能只调 DestroyHolder：出牌时卡片已经被 Reparent 到镜像层，
+    /// holder 只剩空壳，DestroyHolder 里 ownsCard 判定为 false，
+    /// 会故意跳过卡片回收（那是为了防止重复归还对象池）。
+    /// 结果卡片永久留在层上——能力卡打出后一直悬在空中就是这么来的。
+    /// </summary>
+    private static void DiscardSettled(SettlingCard item)
+    {
+        Settling.Remove(item);
+
+        try
+        {
+            NCard? card = item.Card;
+
+            if (card != null
+                && GodotObject.IsInstanceValid(card)
+                && card.GetParent() != null
+                && card.GetParent() != item.Holder)
+            {
+                ResetPooledCard(card);
+                card.GetParent()?.RemoveChild(card);
+                NodePool.Free(card);
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+
+        DestroyHolder(item.Holder);
     }
 
     private static bool IsPower(CardModel model)
