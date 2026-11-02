@@ -42,18 +42,8 @@ internal static class HandMirror
     private const float PlaySettleSeconds = 0.22f;
 
     private static readonly List<NHandCardHolder> Holders = new();
-    private static readonly List<NHandCardHolder> Detached = new();
-    private static readonly Dictionary<NCard, Tween> FlightTweens = new();
 
-    /// <summary>已飞入播放区、正在等待最终去向的牌。</summary>
-    private sealed class SettlingCard
-    {
-        public NHandCardHolder Holder = null!;
-        public NCard Card = null!;
-        public CardModel Model = null!;
-    }
 
-    private static readonly List<SettlingCard> Settling = new();
 
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
@@ -176,9 +166,7 @@ internal static class HandMirror
                     _lastEnergy = int.MinValue;
 
                     Holders.Clear();
-                    Detached.Clear();
-                    Settling.Clear();
-                    FlightTweens.Clear();
+                    CardFlight.ReleaseAll();
                 }
 
                 _lastHand = hand;
@@ -190,7 +178,7 @@ internal static class HandMirror
                 return;
             }
 
-            UpdateSettling();
+            CardFlight.UpdateSettling();
 
             StringName key = BuildKey(cards);
             if (key != _key)
@@ -408,14 +396,7 @@ internal static class HandMirror
             // ignored
         }
 
-        foreach (NHandCardHolder flying in Detached.ToArray())
-        {
-            DestroyHolder(flying);
-        }
-
-        Detached.Clear();
-
-        Settling.Clear();
+        CardFlight.ReleaseAll();
         FreeHolders();
 
         if (_layer != null && GodotObject.IsInstanceValid(_layer))
@@ -475,7 +456,7 @@ internal static class HandMirror
         // 仍留在 existing 里的，就是他打出去的那几张。
         foreach (NHandCardHolder played in existing.Values)
         {
-            AnimatePlayedCard(played);
+            CardFlight.AnimatePlayedCard(played, _layer);
         }
 
         Holders.Clear();
@@ -539,267 +520,6 @@ internal static class HandMirror
     /// 他打出的牌：立刻脱离布局（其余牌马上回流），卡面飞向屏幕中心并淡出。
     /// 补间作用在 CardNode 上而不是 holder，避开 holder 自身的 AnimPosition 协程。
     /// </summary>
-    private static void AnimatePlayedCard(NHandCardHolder holder)
-    {
-        try
-        {
-            if (holder == null || !GodotObject.IsInstanceValid(holder))
-            {
-                return;
-            }
-
-            NCard? card = holder.CardNode;
-            Detached.Add(holder);
-
-            if (card == null || !GodotObject.IsInstanceValid(card))
-            {
-                DestroyHolder(holder);
-                return;
-            }
-
-            // 从 holder 里摘出来变成自由节点：否则飞行的 global_position 会被
-            // holder 的扇形旋转/缩放反算扭曲，路径不是直线。
-            if (_layer != null && GodotObject.IsInstanceValid(_layer))
-            {
-                card.Reparent(_layer, true);   // keep global transform
-            }
-
-            Vector2 playTarget = PlayTargetGlobal(card);
-            Vector2 pickedUp = card.GlobalPosition + Vector2.Up * PickUpLift;
-
-            Tween tween = card.CreateTween();
-
-            // 伪「拿起」：原版是真实拖拽，这里用一次轻微上抬+放大代替，
-            // 避免卡片从扇形位置凭空飞走。
-            tween.TweenProperty(card, "global_position", pickedUp, PickUpSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.Out);
-            tween.Parallel()
-                .TweenProperty(card, "scale", card.Scale * 1.15f, PickUpSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.Out);
-
-            // 复刻 NCard.AnimCardToPlayPile：飞到播放区、缩放到 0.8、0.2 秒、不淡出。
-            tween.TweenProperty(card, "global_position", playTarget, PlayToPileSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.Out);
-            tween.Parallel()
-                .TweenProperty(card, "scale", Vector2.One * 0.8f, PlayToPileSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.Out);
-
-            tween.TweenCallback(Callable.From(() => BeginSettling(holder, card)));
-
-            FlightTweens[card] = tween;
-        }
-        catch (Exception e)
-        {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] played-card animation failed: {e.Message}");
-            DestroyHolder(holder);
-        }
-    }
-
-    /// <summary>
-    /// PileType.Play.GetTargetPosition 返回的是相对 PlayContainer 的局部坐标
-    /// （原版会把卡片 reparent 进去），而 Discard 返回全局坐标。
-    /// 这里统一换算成全局坐标。
-    /// </summary>
-    private static Vector2 PlayTargetGlobal(NCard card, PileType pile = PileType.Play)
-    {
-        try
-        {
-            if (pile != PileType.Play)
-            {
-                return pile.GetTargetPosition(card);
-            }
-
-            NCombatUi? ui = NCombatRoom.Instance?.Ui;
-            if (ui?.PlayContainer is not { } container)
-            {
-                return card.GlobalPosition;
-            }
-
-            Vector2 local = PileType.Play.GetTargetPosition(card);
-            return container.GlobalPosition + container.Scale * local;
-        }
-        catch
-        {
-            return card.GlobalPosition;
-        }
-    }
-
-    private static void BeginSettling(NHandCardHolder holder, NCard card)
-    {
-        try
-        {
-            if (holder == null || !GodotObject.IsInstanceValid(holder) || card == null || !GodotObject.IsInstanceValid(card))
-            {
-                DestroyHolder(holder);
-                return;
-            }
-
-            Settling.Add(new SettlingCard
-            {
-                Holder = holder,
-                Card = card,
-                Model = card.Model!,
-            });
-        }
-        catch
-        {
-            DestroyHolder(holder);
-        }
-    }
-
-    /// <summary>
-    /// 跟着 CardModel.Pile 的真实归属收尾：卡被打出后会先进入 Play，
-    /// 结算完成才转到 Discard / Exhaust / Draw。这里等到它落定，再飞向对应牌堆，
-    /// 而不是一律飞弃牌堆。
-    /// </summary>
-    private static void UpdateSettling()
-    {
-        if (Settling.Count == 0)
-        {
-            return;
-        }
-
-        foreach (SettlingCard item in Settling.ToArray())
-        {
-            if (!GodotObject.IsInstanceValid(item.Card) || !GodotObject.IsInstanceValid(item.Holder))
-            {
-                Settling.Remove(item);
-                continue;
-            }
-
-            PileType? destination = null;
-
-            try
-            {
-                destination = item.Model.Pile?.Type;
-            }
-            catch
-            {
-                destination = null;
-            }
-
-            switch (destination)
-            {
-                case PileType.Discard:
-                case PileType.Exhaust:
-                case PileType.Draw:
-                    Settling.Remove(item);
-                    FlyToPile(item, destination.Value);
-                    break;
-
-                case PileType.Hand:
-                    // 牌被打消 / 退回手牌：手牌镜像会重新建出这张牌，
-                    // 播放区这一份直接回收，否则会重影。
-                    Settling.Remove(item);
-                    DestroyHolder(item.Holder);
-                    break;
-
-                // Play / None：他还在选择目标或结算中，停在播放区继续等。
-                // 这里刻意不设超时——「飞溅」这类需要选目标的牌本来就要停留很久。
-            }
-        }
-    }
-
-    /// <summary>
-    /// 复用原版的 NCardFlyVfx：它自带 NCardTrailVfx 拖尾和贝塞尔控制点，
-    /// 这就是原版打出牌后那条「弧形彩色光带」的来源。拖尾贴图取自
-    /// Character.TrailPath，所以不同角色颜色不同。
-    ///
-    /// 用法照抄 CardPileCmd.cs:792——先 reparent 到角色 VFX 容器，再创建特效。
-    /// 卡片所有权转交给 VFX，holder 空壳直接回收。
-    /// </summary>
-    private static void FlyToPile(SettlingCard item, PileType pile)
-    {
-        try
-        {
-            if (item.Holder != null)
-            {
-                Detached.Remove(item.Holder);
-            }
-
-            Player? owner = null;
-            Node? container = null;
-
-            try
-            {
-                owner = item.Model.Owner;
-                container = owner?.Creature?.GetVfxContainer();
-            }
-            catch
-            {
-                container = null;
-            }
-
-            if (container == null || owner == null)
-            {
-                DestroyHolder(item.Holder);
-                return;
-            }
-
-            // 重建出来的悬停卡没有 holder，这里先把它从原本的父节点摘掉。
-
-            item.Card.Reparent(container);
-
-            NCardFlyVfx? vfx = NCardFlyVfx.Create(
-                item.Card,
-                pile,
-                isAddingToPile: true,
-                owner.Character.TrailPath);
-
-            if (vfx == null)
-            {
-                DestroyHolder(item.Holder);
-                return;
-            }
-
-            container.AddChildSafely(vfx);
-
-            // NCardFlyVfx 只是把卡片 Visible=false 然后自己 QueueFree，
-            // 并不负责回收卡片本体。这里在特效销毁时补一次归还。
-            NCard flying = item.Card;
-            vfx.TreeExited += () =>
-            {
-                try
-                {
-                    if (!GodotObject.IsInstanceValid(flying))
-                    {
-                        return;
-                    }
-
-                    // 可能已经被别的回收路径处理过（NodePool.Free 会把节点摘下来），
-                    // 再还一次就会报 Tried to free object ... back to pool。
-                    if (flying.GetParent() == null)
-                    {
-                        return;
-                    }
-
-                    ResetPooledCard(flying);
-                    flying.GetParent()?.RemoveChild(flying);
-                    NodePool.Free(flying);
-                }
-                catch
-                {
-                    // ignored
-                }
-            };
-
-            // 卡片现在归特效管，holder 只是空壳。
-            if (item.Holder != null && GodotObject.IsInstanceValid(item.Holder))
-            {
-                item.Holder.QueueFree();
-            }
-        }
-        catch (Exception e)
-        {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
-            DestroyHolder(item.Holder);
-        }
-    }
-
     private static readonly System.Reflection.FieldInfo? HandIndexLabelField =
         typeof(NHandCardHolder).GetField(
             "_handIndexLabel",
@@ -836,79 +556,6 @@ internal static class HandMirror
         }
 
         return sb.ToString();
-    }
-
-    private static void DestroyHolder(NHandCardHolder? holder)
-    {
-        try
-        {
-            if (holder == null)
-            {
-                return;
-            }
-
-            Detached.Remove(holder);
-
-            if (holder == null || !GodotObject.IsInstanceValid(holder))
-            {
-                return;
-            }
-
-            NCard? card = holder.CardNode;
-
-            // 出牌动画会把 CardNode reparent 到角色 VFX 容器，由 NCardFlyVfx 接管，
-            // 最终在 vfx.TreeExited 里归还。这里必须确认卡片还挂在自己名下，
-            // 否则会重复归还（日志里的 Tried to free object ... back to pool）。
-            bool ownsCard = card != null
-                && GodotObject.IsInstanceValid(card)
-                && card.GetParent() == holder;
-
-            if (ownsCard && card != null)
-            {
-                ResetPooledCard(card);
-            }
-
-            holder.GetParent()?.RemoveChild(holder);
-            holder.QueueFree();
-
-            if (ownsCard && card != null && GodotObject.IsInstanceValid(card))
-            {
-                card.GetParent()?.RemoveChild(card);
-                NodePool.Free(card);
-            }
-        }
-        catch
-        {
-            // ignored
-        }
-    }
-
-    /// <summary>
-    /// 归还对象池前必须把动画改过的属性复位：池里的节点会被游戏直接复用，
-    /// 残留的 modulate.a = 0 会让本地手牌出现透明卡，残留 scale 会让卡变大。
-    /// </summary>
-    private static void ResetPooledCard(NCard card)
-    {
-        if (FlightTweens.TryGetValue(card, out Tween? tween))
-        {
-            try
-            {
-                if (tween != null && tween.IsValid())
-                {
-                    tween.Kill();
-                }
-            }
-            catch
-            {
-                // ignored
-            }
-
-            FlightTweens.Remove(card);
-        }
-
-        card.Modulate = Colors.White;
-        card.Scale = Vector2.One;
-        card.Position = Vector2.Zero;
     }
 
     private static Control EnsureLayer(NPlayerHand hand)
@@ -990,36 +637,9 @@ internal static class HandMirror
     {
         foreach (NHandCardHolder holder in Holders)
         {
-            try
-            {
-                if (!GodotObject.IsInstanceValid(holder))
-                {
-                    continue;
-                }
-
-                NCard? card = holder.CardNode;
-                bool ownsCard = card != null
-                    && GodotObject.IsInstanceValid(card)
-                    && card.GetParent() == holder;
-
-                if (ownsCard && card != null)
-                {
-                    ResetPooledCard(card);
-                }
-
-                holder.GetParent()?.RemoveChild(holder);
-                holder.QueueFree();
-
-                if (ownsCard && card != null && GodotObject.IsInstanceValid(card))
-                {
-                    card.GetParent()?.RemoveChild(card);
-                    NodePool.Free(card);
-                }
-            }
-            catch (Exception e)
-            {
-                ModEntry.Log.Warn($"[{ModEntry.ModId}] free mirror holder: {e.Message}");
-            }
+            // 统一走 CardFlight：它负责「卡片是否还挂在自己名下」的判断、
+            // 归还前的 modulate/scale/position 复位，以及 NodePool.Free。
+            CardFlight.DestroyHolder(holder);
         }
 
         Holders.Clear();
