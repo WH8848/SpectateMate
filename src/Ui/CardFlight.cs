@@ -125,6 +125,8 @@ public static class CardFlight
                 case PileType.Exhaust:
                 case PileType.Draw:
                     Settling.Remove(item);
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] settle {item.Model.Id.Entry} -> {destination.Value}");
                     FlyToPile(item, destination.Value);
                     break;
 

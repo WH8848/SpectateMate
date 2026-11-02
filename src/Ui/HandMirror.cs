@@ -540,11 +540,16 @@ internal static class HandMirror
 
             if (destination == PileType.Play)
             {
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] hand -> PLAY: {played.CardNode?.Model?.Id.Entry}");
                 CardFlight.AnimatePlayedCard(played, _layer);
             }
             else
             {
                 // 不是出牌：直接回收空壳，让原版动画负责后续表现。
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] hand -> {destination?.ToString() ?? "?"}: " +
+                    $"{played.CardNode?.Model?.Id.Entry}");
                 CardFlight.DestroyHolder(played);
             }
         }
