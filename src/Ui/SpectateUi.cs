@@ -211,7 +211,7 @@ internal static class SpectateUi
                     return;
                 }
 
-                ClearPotionContainer(topBar.PotionContainer);
+                ContainerClear.Potions(topBar.PotionContainer);
                 topBar.PotionContainer.Initialize(_runState);
             });
         });
@@ -336,7 +336,7 @@ internal static class SpectateUi
                 return;
             }
 
-            Step("relic-clear", () => ClearRelicInventory(inventory));
+            Step("relic-clear", () => ContainerClear.Relics(inventory));
             inventory.Initialize(_runState);
         });
     }
@@ -837,59 +837,6 @@ internal static class SpectateUi
     }
 
     // ---- vanilla-node clearing (private members; each step is guarded) ----
-
-    private static void ClearRelicInventory(NRelicInventory inventory)
-    {
-        Invoke(inventory, "DisconnectPlayerEvents");
-        if (Read<IList?>(inventory, "_relicNodes") is { } nodes)
-        {
-            FreeAll(nodes);
-            nodes.Clear();
-        }
-
-        Set(inventory, "_player", null);
-    }
-
-    private static void ClearPotionContainer(NPotionContainer container)
-    {
-        Invoke(container, "DisconnectPlayerEvents");
-
-        if (Read<IList?>(container, "_holders") is { } holders)
-        {
-            FreeAll(holders);
-            holders.Clear();
-        }
-
-        if (Read<Node?>(container, "_potionHolders") is { } holderRoot && GodotObject.IsInstanceValid(holderRoot))
-        {
-            foreach (Node child in holderRoot.GetChildren())
-            {
-                holderRoot.RemoveChild(child);
-                child.QueueFree();
-            }
-        }
-
-        Set(container, "_focusedHolder", null);
-        Set(container, "_player", null);
-    }
-
-    private static void FreeAll(IList list)
-    {
-        var snapshot = new List<object?>(list.Count);
-        foreach (object? item in list)
-        {
-            snapshot.Add(item);
-        }
-
-        foreach (object? item in snapshot)
-        {
-            if (item is Node node && GodotObject.IsInstanceValid(node))
-            {
-                node.GetParent()?.RemoveChild(node);
-                node.QueueFree();
-            }
-        }
-    }
 
     // ---- tiny reflection helpers ----
 
