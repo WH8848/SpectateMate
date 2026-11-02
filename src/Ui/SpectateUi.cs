@@ -287,6 +287,16 @@ internal static class SpectateUi
     /// 但此时我们显示的是队友的手牌，他还在行动，不该被禁用。
     /// 这里每拍按他的 PlayerTurnPhase 对齐状态。
     /// </summary>
+    // 上一次同步给手牌的启用状态。只在发生变化时才真正调用
+    // AnimEnable / AnimDisable——这两个方法各自会启动一段位移动画，
+    // 每拍无条件调用的话，phase 稍有抖动手牌就会上下反复（观感是整排牌在抖）。
+    private static bool? _handEnabled;
+
+    public static void ResetHandEnabledCache()
+    {
+        _handEnabled = null;
+    }
+
     public static void SyncHandEnabled(Player target)
     {
         Step("hand-enabled", () =>
@@ -312,6 +322,12 @@ internal static class SpectateUi
                 or PlayerTurnPhase.Start
                 or PlayerTurnPhase.AutoPrePlay;
 
+            if (_handEnabled == active)
+            {
+                return;
+            }
+
+            _handEnabled = active;
             InvokeMethod(hand, active ? "AnimEnable" : "AnimDisable");
         });
     }
@@ -348,6 +364,9 @@ internal static class SpectateUi
             {
                 InvokeMethod(hand, "AnimEnable");
             }
+
+            // 清掉启用状态缓存，下次观战重新判断。
+            _handEnabled = null;
 
             // 关键：观战期间 ActiveHolders 被劫持成镜像列表，RefreshLayout 只摆放
             // 镜像 holder。这段时间里你自己新抽的牌虽然已经进了 CardHolderContainer，

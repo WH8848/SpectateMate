@@ -517,10 +517,36 @@ internal static class HandMirror
             next.Add(holder);
         }
 
-        // 仍留在 existing 里的，就是他打出去的那几张。
+        // 仍留在 existing 里的，就是这一拍从手牌里消失的牌。
+        //
+        // 但它们不一定都是「被打出」：虚无、回合结束弃手牌、被消耗的牌
+        // 同样会从手牌消失。这类牌的原版动画由游戏自己处理（就地碎裂、
+        // 或直接飞向对应牌堆），如果我们再当成出牌送去播放区，
+        // 就会看到一张本该碎裂的牌飞进了弃牌堆。
+        //
+        // 只有真正进入 Play 牌堆的才是出牌。
         foreach (NHandCardHolder played in existing.Values)
         {
-            CardFlight.AnimatePlayedCard(played, _layer);
+            PileType? destination = null;
+
+            try
+            {
+                destination = played.CardNode?.Model?.Pile?.Type;
+            }
+            catch
+            {
+                destination = null;
+            }
+
+            if (destination == PileType.Play)
+            {
+                CardFlight.AnimatePlayedCard(played, _layer);
+            }
+            else
+            {
+                // 不是出牌：直接回收空壳，让原版动画负责后续表现。
+                CardFlight.DestroyHolder(played);
+            }
         }
 
         Holders.Clear();
