@@ -567,9 +567,18 @@ internal static class HandMirror
                     $"{played.CardNode?.Model?.Id.Entry}");
                 CardFlight.PlayExhaustFromHand(played);
             }
+            else if (destination is PileType.Discard or PileType.Draw)
+            {
+                // 回合结束弃手牌：原版同样走 NCardFlyVfx，但播在隐藏的原生卡上，
+                // 观战者看不到，这里在镜像卡上补一份。
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] hand -> {destination.Value}: " +
+                    $"{played.CardNode?.Model?.Id.Entry}");
+                CardFlight.PlayFlyFromHand(played, destination.Value);
+            }
             else
             {
-                // 其余（弃手牌等）：直接回收空壳，表现交给原版。
+                // 其余（去向未知）：直接回收空壳，表现交给原版。
                 ModEntry.Log.Info(
                     $"[{ModEntry.ModId}] hand -> {destination?.ToString() ?? "?"}: " +
                     $"{played.CardNode?.Model?.Id.Entry}");

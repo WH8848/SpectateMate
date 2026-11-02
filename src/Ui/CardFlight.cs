@@ -348,6 +348,96 @@ public static class CardFlight
     }
 
     /// <summary>
+    /// 从手牌直接进弃牌堆 / 抽牌堆时补一份飞行动画。
+    ///
+    /// 原版在 CardPileCmd 里做的是：把卡片 reparent 到角色 VFX 容器，
+    /// 创建 NCardFlyVfx，再挂到同一个容器下。但它取的是
+    /// NCard.FindOnTable(Model)——找到的是被我们藏起来的原生卡，
+    /// 特效在看不见的地方播完。
+    /// 这里在镜像卡上按同样的步骤补一遍。
+    /// </summary>
+    public static void PlayFlyFromHand(NHandCardHolder? holder, PileType pile)
+    {
+        try
+        {
+            NCard? card = holder?.CardNode;
+            if (holder == null || card == null || !GodotObject.IsInstanceValid(card))
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            CardModel? model = card.Model;
+            Detached.Remove(holder);
+
+            Player? owner = null;
+            Node? container = null;
+
+            try
+            {
+                owner = model?.Owner;
+                container = owner?.Creature?.GetVfxContainer();
+            }
+            catch
+            {
+                container = null;
+            }
+
+            if (container == null || owner == null)
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            card.Reparent(container);
+
+            NCardFlyVfx? vfx = NCardFlyVfx.Create(
+                card,
+                pile,
+                isAddingToPile: true,
+                owner.Character.TrailPath);
+
+            if (vfx == null)
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            container.AddChildSafely(vfx);
+
+            NCard flying = card;
+            vfx.TreeExited += () =>
+            {
+                try
+                {
+                    if (!GodotObject.IsInstanceValid(flying) || flying.GetParent() == null)
+                    {
+                        return;
+                    }
+
+                    ResetPooledCard(flying);
+                    flying.GetParent()?.RemoveChild(flying);
+                    NodePool.Free(flying);
+                }
+                catch
+                {
+                    // ignored
+                }
+            };
+
+            if (GodotObject.IsInstanceValid(holder))
+            {
+                holder.QueueFree();
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand fly vfx failed: {e.Message}");
+            DestroyHolder(holder);
+        }
+    }
+
+    /// <summary>
     /// 从手牌直接消耗（虚无、回合结束消耗）时播的碎裂特效。
     ///
     /// 原版走 CardPileCmd 的 Exhaust 分支，用 NCardExhaustQuickVfx；
