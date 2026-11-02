@@ -322,6 +322,9 @@ public static class SpectateOverlay
 
     public static void OnCombatEnded()
     {
+        ModEntry.Log.Info(
+            $"[{ModEntry.ModId}] combat ended event: open={IsOpen} mode={SpectateChoice.CurrentMode}"); 
+
         if (!IsOpen)
         {
             SpectateChoice.ResetAll();
@@ -447,7 +450,9 @@ public static class SpectateOverlay
 
             if (_wasInCombat && !inCombat)
             {
-                ModEntry.Log.Info($"[{ModEntry.ModId}] combat ended; leaving spectate");
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] combat ended; leaving spectate " +
+                    $"(mode={SpectateChoice.CurrentMode})");
                 Close();
                 return;
             }

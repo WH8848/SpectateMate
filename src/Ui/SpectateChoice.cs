@@ -149,6 +149,9 @@ public static class SpectateChoice
         }
     }
 
+    /// <summary>当前选择模式，供诊断使用。</summary>
+    public static string CurrentMode => $"{_mode}/screen={(_screen != null)}";
+
     /// <summary>每拍调用：他在选牌就打开只读界面，选完就关掉。</summary>
     /// <summary>
     /// 上一次观察到的候选牌堆内容签名，用于判定他是否已经选完。
