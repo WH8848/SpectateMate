@@ -50,8 +50,8 @@ public static class SpectateChoice
     private static bool _handSelecting;
     private static Func<CardModel, bool>? _handFilter;
     private static Player? _handOwner;
-    private static string _handPrompt = string.Empty;
-    private static bool _handUiShown;
+    // 上一拍是否还处于选择模式的视觉状态，用于触发一次收尾清理。
+    private static bool _handVisualActive;
     private static bool _subscribed;
 
     public static void RememberChooseACard(IReadOnlyList<CardModel> cards, bool canSkip, Player player)
@@ -78,17 +78,8 @@ public static class SpectateChoice
         _handFilter = filter;
         EnsureSubscribed();
 
-        try
-        {
-            _handPrompt = prefs.Prompt.GetFormattedText();
-        }
-        catch
-        {
-            _handPrompt = string.Empty;
-        }
-
-        // 真正的视觉切换交给 SyncHandSelection，这样退出观战再进来也能重新套用。
-        _handUiShown = false;
+        // 视觉切换交给 SyncHandSelection 每拍驱动，
+        // 这样退出观战再进来也能重新套用。
     }
 
     /// <summary>他完成选择（结果已送达）→ 退出选择模式。</summary>
@@ -97,13 +88,11 @@ public static class SpectateChoice
         _handSelecting = false;
         _handFilter = null;
         _handOwner = null;
-        _handPrompt = string.Empty;
-        _handUiShown = false;
         HandMirror.ClearHandSelection();
         HandMirror.ClearHighlight();
 
         // 幂等清理：即使某次显示过遮罩，这里也一定撤掉。
-        HandMirror.ApplySelectionUi(visible: false, null);
+        HandMirror.ResetSelectionUi();
     }
 
     /// <summary>
@@ -183,13 +172,16 @@ public static class SpectateChoice
             // 只保留「不可选的牌隐藏」这一层。
             // 黑幕和顶部提示按需求取消，观战时不再显示。
             HandMirror.ApplyHandSelection(_handFilter);
+
+            // 标记「有东西需要收尾」，退出选择时据此清理一次。
+            _handVisualActive = true;
         }
-        else if (_handUiShown)
+        else if (_handVisualActive)
         {
-            // 收尾：确保任何残留的遮罩/提示都被撤掉，并恢复全部手牌。
-            HandMirror.ApplySelectionUi(visible: false, null);
-            _handUiShown = false;
+            // 收尾：撤掉可能残留的遮罩/提示，并恢复全部手牌可见。
+            HandMirror.ResetSelectionUi();
             HandMirror.ClearHandSelection();
+            _handVisualActive = false;
         }
     }
 
@@ -397,8 +389,7 @@ public static class SpectateChoice
     public static void Reset()
     {
         Close();
-        HandMirror.ApplySelectionUi(visible: false, null);
+        HandMirror.ResetSelectionUi();
         HandMirror.ClearHandSelection();
-        _handUiShown = false;
     }
 }

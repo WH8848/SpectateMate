@@ -227,9 +227,9 @@ internal static class HandMirror
         HandSelectionView.ApplyFilter(_lastHand, Holders, filter);
     }
 
-    public static void ApplySelectionUi(bool visible, string? prompt)
+    public static void ResetSelectionUi()
     {
-        HandSelectionView.ApplyChrome(_lastHand, visible, prompt);
+        HandSelectionView.HideChrome(_lastHand);
     }
 
     public static void ClearHandSelection()

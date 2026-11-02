@@ -10,17 +10,15 @@ using MegaCrit.Sts2.addons.mega_text;
 namespace SpectateMate.Ui;
 
 /// <summary>
-/// 手牌选择模式（弃牌 / 烧牌 / 暴政）的视觉复刻。
+/// 手牌选择模式（弃牌 / 烧牌 / 暴政）的视觉。
 ///
-/// 原版 NPlayerHand.SelectCards 做三件事：
-///   1. 不可选的牌 Visible = false，其余由 RefreshLayout 重新收拢；
-///   2. 顶部 _selectionHeader 显示提示文字；
-///   3. _selectModeBackstop 淡入成不透明，画面整体变暗。
+/// 目前只保留两层功能：
+///   1. ApplyFilter —— 不可选的牌 Visible = false，其余由 RefreshLayout 重新收拢，
+///      与被观战者看到的一致；
+///   2. HideChrome  —— 幂等地把顶部提示、全屏遮罩、确认按钮收回去。
 ///
-/// 观战时这些控件都在同一个 NPlayerHand 上，直接复用，位置和样式天然一致；
-/// 确认按钮则完全隐藏——观战者本来就不能替他选，留着只会诱导点击。
-///
-/// 这里只做视觉，不参与任何状态机；状态由 SpectateChoice 持有。
+/// 黑幕和提示文字按需求不再显示，所以没有对应的「显示」path；
+/// 保留 HideChrome 是为了清掉任何可能残留的状态。
 /// </summary>
 public static class HandSelectionView
 {
@@ -40,8 +38,6 @@ public static class HandSelectionView
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
 
     private static Tween? _backstopTween;
-    private static bool _warnedHeader;
-    private static bool _warnedBackstop;
 
     /// <summary>按 filter 隐藏不可选的牌；filter 为 null 表示全部可选。</summary>
     public static void ApplyFilter(
@@ -81,8 +77,14 @@ public static class HandSelectionView
         }
     }
 
-    /// <summary>顶部提示、遮罩、确认按钮的显示与隐藏。</summary>
-    public static void ApplyChrome(NPlayerHand? hand, bool visible, string? prompt)
+    /// <summary>恢复全部可见。</summary>
+    public static void Clear(NPlayerHand? hand, IReadOnlyList<NHandCardHolder> holders)
+    {
+        ApplyFilter(hand, holders, null);
+    }
+
+    /// <summary>幂等地把选择模式的 UI 收回去。可重复调用。</summary>
+    public static void HideChrome(NPlayerHand? hand)
     {
         try
         {
@@ -93,95 +95,43 @@ public static class HandSelectionView
 
             if (SelectionHeaderField?.GetValue(hand) is MegaRichTextLabel header)
             {
-                header.Visible = visible;
-
-                if (visible && !string.IsNullOrEmpty(prompt))
-                {
-                    header.Text = "[center]" + prompt + "[/center]";
-                }
-            }
-            else if (visible && !_warnedHeader)
-            {
-                _warnedHeader = true;
-                ModEntry.Log.Warn($"[{ModEntry.ModId}] selection header node missing; prompt will not show");
+                header.Visible = false;
             }
 
             if (SelectModeBackstopField?.GetValue(hand) is Control backstop)
             {
                 backstop.MouseFilter = Control.MouseFilterEnum.Ignore;
-                _warnedBackstop = false;
 
-                // 必须 kill 上一个补间：退出观战时的淡出还没跑完就重新进入，
-                // 两个补间会同时改 self_modulate:a，表现为闪一下然后一直亮着。
                 _backstopTween?.Kill();
                 _backstopTween = null;
 
-                if (visible)
+                if (!backstop.Visible && backstop.SelfModulate.A <= 0f)
                 {
-                    if (!backstop.Visible)
-                    {
-                        Color from = backstop.SelfModulate;
-                        from.A = 0f;
-                        backstop.SelfModulate = from;
-                    }
+                    return;
+                }
 
-                    backstop.Visible = true;
-                    _backstopTween = backstop.CreateTween();
-                    _backstopTween.TweenProperty(backstop, "self_modulate:a", 1f, 0.2f)
-                        .SetTrans(Tween.TransitionType.Cubic)
-                        .SetEase(Tween.EaseType.Out);
-                }
-                else
+                _backstopTween = backstop.CreateTween();
+                _backstopTween.TweenProperty(backstop, "self_modulate:a", 0f, 0.2f)
+                    .SetTrans(Tween.TransitionType.Cubic)
+                    .SetEase(Tween.EaseType.Out);
+                _backstopTween.TweenCallback(Callable.From(() =>
                 {
-                    _backstopTween = backstop.CreateTween();
-                    _backstopTween.TweenProperty(backstop, "self_modulate:a", 0f, 0.2f)
-                        .SetTrans(Tween.TransitionType.Cubic)
-                        .SetEase(Tween.EaseType.Out);
-                    _backstopTween.TweenCallback(Callable.From(() =>
-                    {
-                        Color zero = backstop.SelfModulate;
-                        zero.A = 0f;
-                        backstop.SelfModulate = zero;
-                        backstop.Visible = false;
-                    }));
-                }
-            }
-            else if (visible && !_warnedBackstop)
-            {
-                _warnedBackstop = true;
-                ModEntry.Log.Warn($"[{ModEntry.ModId}] selection backstop node missing; screen will not dim");
+                    Color zero = backstop.SelfModulate;
+                    zero.A = 0f;
+                    backstop.SelfModulate = zero;
+                    backstop.Visible = false;
+                }));
             }
 
             if (ConfirmButtonField?.GetValue(hand) is NConfirmButton button)
             {
-                // 确认按钮直接隐藏：观战者不能替他选，按钮没有存在的意义。
-                button.Visible = !visible;
+                button.Visible = true;
                 button.Disable();
-
-                if (visible)
-                {
-                    button.MouseFilter = Control.MouseFilterEnum.Ignore;
-                }
             }
         }
         catch (Exception e)
         {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] selection ui failed: {e.Message}");
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] selection ui reset failed: {e.Message}");
         }
-    }
-
-    /// <summary>退出选择模式：所有牌恢复可见。</summary>
-    public static void Clear(NPlayerHand? hand, IReadOnlyList<NHandCardHolder> holders)
-    {
-        ApplyFilter(hand, holders, null);
-    }
-
-    /// <summary>彻底复位，供观战退出时调用。</summary>
-    public static void Reset(NPlayerHand? hand)
-    {
-        ApplyChrome(hand, visible: false, null);
-
-        _backstopTween?.Kill();
-        _backstopTween = null;
     }
 }
