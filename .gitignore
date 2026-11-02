@@ -3,3 +3,9 @@ obj/
 *.user
 .vs/
 .idea/
+
+# 构建产物 / 上传临时目录
+workshop/content/
+bin/
+obj/
+
