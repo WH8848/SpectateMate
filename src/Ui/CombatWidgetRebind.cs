@@ -74,6 +74,29 @@ internal static class CombatWidgetRebind
             label.SetTextAutoSize(next.Cards.Count.ToString());
         }
 
+        // 消耗牌堆的可见性只在 Initialize 里按 Cards.Count 判断一次：
+        //
+        //   public override void Initialize(Player player) {
+        //       base.Initialize(player);
+        //       if (Pile.GetPile(player).Cards.Count > 0) { Visible = true; Enable(); }
+        //   }
+        //
+        // 观战是战斗中途开始的，不会走 Initialize，按钮就停在我们自己的状态上
+        // ——自己没有消耗牌时它一直是隐藏的，表现为「消耗牌堆消失」。
+        if (pile is NExhaustPileButton exhaust)
+        {
+            // 有牌就滑入显示，没牌就滑出隐藏——退出观战重绑回自己时同样适用，
+            // 否则队友有消耗牌、自己没有时，按钮会一直留在屏幕上。
+            if (next.Cards.Count > 0)
+            {
+                exhaust.AnimIn();
+            }
+            else
+            {
+                exhaust.AnimOut();
+            }
+        }
+
         ModEntry.Log.Info(
             $"[{ModEntry.ModId}] pile {type} -> netId={player.NetId} ({next.Cards.Count} cards)");
     }
