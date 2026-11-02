@@ -6,6 +6,7 @@ using MegaCrit.sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.Core.Nodes.TopBar;
 using MegaCrit.Sts2.addons.mega_text;
 using MegaCrit.Sts2.Core.Combat;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -320,20 +321,25 @@ internal static class SpectateUi
                 return;
             }
 
-            PlayerTurnPhase phase;
+            // 用 CombatSide 而不是 PlayerTurnPhase 判断。
+            //
+            // Phase 在他出牌期间会抖到 None（None 同时表示「战斗外」和「敌人回合」），
+            // 用它判断就会「打一张牌整排手牌下移变暗」。
+            // CombatSide 只在回合真正切换时改变，是稳定的信号：
+            // 玩家侧 = 他还能出牌 = 手牌正常；敌人侧 = 收起手牌。
+            bool active = false;
+
             try
             {
-                phase = target.PlayerCombatState?.Phase ?? PlayerTurnPhase.None;
+                ICombatState? state = target.Creature?.CombatState;
+                active = state != null
+                    && state.CurrentSide == CombatSide.Player
+                    && !CombatManager.Instance.IsOverOrEnding;
             }
             catch
             {
-                phase = PlayerTurnPhase.None;
+                active = false;
             }
-
-            // 他还在自己的回合里 → 手牌保持正常显示
-            bool active = phase is PlayerTurnPhase.Play
-                or PlayerTurnPhase.Start
-                or PlayerTurnPhase.AutoPrePlay;
 
             if (_handEnabled == active)
             {

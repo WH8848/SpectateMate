@@ -538,18 +538,32 @@ internal static class HandMirror
                 destination = null;
             }
 
+            // 虚无牌从手牌消失时，Model.Pile 可能已经先一步变成 None
+            // （牌已从所有牌堆移除），单看 Pile 会漏判。用关键字兜一层。
+            bool ethereal = false;
+
+            try
+            {
+                ethereal = played.CardNode?.Model?.Keywords.Contains(CardKeyword.Ethereal) == true;
+            }
+            catch
+            {
+                ethereal = false;
+            }
+
             if (destination == PileType.Play)
             {
                 ModEntry.Log.Info(
                     $"[{ModEntry.ModId}] hand -> PLAY: {played.CardNode?.Model?.Id.Entry}");
                 CardFlight.AnimatePlayedCard(played, _layer);
             }
-            else if (destination == PileType.Exhaust)
+            else if (destination == PileType.Exhaust || ethereal)
             {
                 // 虚无、回合结束消耗：原版会在被隐藏的原生卡上播碎裂，
                 // 观战者看不到，这里在镜像卡上补一份。
                 ModEntry.Log.Info(
-                    $"[{ModEntry.ModId}] hand -> Exhaust: {played.CardNode?.Model?.Id.Entry}");
+                    $"[{ModEntry.ModId}] hand -> Exhaust (ethereal={ethereal}): " +
+                    $"{played.CardNode?.Model?.Id.Entry}");
                 CardFlight.PlayExhaustFromHand(played);
             }
             else
