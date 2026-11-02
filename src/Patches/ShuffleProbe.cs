@@ -146,10 +146,25 @@ internal static class ShuffleTrailFix
     /// 屏幕上只会出现一份光效，直接按观战目标取色即可，
     /// 这样不会因为归属判断出错而漏掉替换。
     /// </summary>
-    private static bool Prefix(ref string trailPath)
+    private static bool Prefix(CardPile startPile, CardPile targetPile, ref string trailPath)
     {
         try
         {
+            // 同一个牌堆之间没有发生移动，不该有光效。
+            //
+            // CardPileCmd.Shuffle 会把抽牌堆的牌也并进待处理列表：
+            //     list.AddRange(PileType.Draw.GetPile(player).Cards);
+            // 弃牌堆为空时，list 里全是本来就在抽牌堆的牌，
+            // Add 之后 oldPile == newPile == Draw，但填特效列表的条件
+            // （旧堆和新堆都在 Draw/Discard/Deck 里）依然成立，
+            // 于是「这一回合根本没洗牌」却播了一次洗牌动画。
+            if (startPile != null && ReferenceEquals(startPile, targetPile))
+            {
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] shuffle vfx skipped: same pile ({startPile.Type})");
+                return false;
+            }
+
             if (!SpectateOverlay.IsOpen)
             {
                 return true;
