@@ -389,9 +389,6 @@ internal static class HandMirror
 
         var next = new List<NHandCardHolder>(count);
 
-        // 本次重建之前是否已经在显示镜像：false 表示这是首次观战。
-        bool firstPaint = !_active;
-
         // 本次重建里新建了几张牌。回合开始一次抽 5 张时，用它来错开入场时间，
         // 复刻原版「一张一张发过来」的节奏。
         int spawnOrder = 0;
@@ -423,49 +420,40 @@ internal static class HandMirror
                 // 随后 RefreshLayout 只会设「目标位置」，holder 自己的 AnimPosition
                 // 协程会把 (0,0) 到扇形位置的位移演成滑动动画。
                 //
-                // 两种场景要区分：
-                //   首次观战（firstPaint）：所有牌都是新建的，必须直接落位，
-                //     否则整排牌会一起从左上角飞进来；
-                //   后续抽牌：新牌从抽牌堆的位置飞入手牌，复刻原版发牌动画。
+                // 统一从抽牌堆起飞、逐张错开——首次观战也走同一条路径。
+                // 起点是抽牌堆中心（不是原点），所以不会出现「整排牌从左上角冲进来」。
                 Vector2 target = HandPosHelper.GetPosition(count, i);
                 float angle = HandPosHelper.GetAngle(count, i);
                 Vector2 scale = HandPosHelper.GetScale(count);
 
-                holder.Position = firstPaint ? target : DrawPileLocal(layer);
+                holder.Position = DrawPileLocal(layer);
                 holder.SetAngleInstantly(angle);
                 holder.SetScaleInstantly(scale);
                 holder.SetTargetAngle(angle);
                 holder.SetTargetScale(scale);
 
-                if (firstPaint)
+                // 逐张错开：第 N 张等 N * 间隔 再起飞。
+                // 起飞前它停在抽牌堆位置，视觉上就是排队等待发牌。
+                float delay = spawnOrder * SpawnStaggerSeconds;
+                spawnOrder++;
+
+                NHandCardHolder captured = holder;
+
+                if (delay <= 0f)
                 {
-                    holder.SetTargetPosition(target);
+                    captured.SetTargetPosition(target);
                 }
                 else
                 {
-                    // 逐张错开：第 N 张等 N * 间隔 再起飞。
-                    // 起飞前它停在抽牌堆位置，视觉上就是排队等待发牌。
-                    float delay = spawnOrder * SpawnStaggerSeconds;
-                    spawnOrder++;
-
-                    NHandCardHolder captured = holder;
-
-                    if (delay <= 0f)
+                    Tween stagger = captured.CreateTween();
+                    stagger.TweenInterval(delay);
+                    stagger.TweenCallback(Callable.From(() =>
                     {
-                        captured.SetTargetPosition(target);
-                    }
-                    else
-                    {
-                        Tween stagger = captured.CreateTween();
-                        stagger.TweenInterval(delay);
-                        stagger.TweenCallback(Callable.From(() =>
+                        if (GodotObject.IsInstanceValid(captured))
                         {
-                            if (GodotObject.IsInstanceValid(captured))
-                            {
-                                captured.SetTargetPosition(target);
-                            }
-                        }));
-                    }
+                            captured.SetTargetPosition(target);
+                        }
+                    }));
                 }
             }
 
