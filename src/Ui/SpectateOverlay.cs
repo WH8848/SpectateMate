@@ -105,7 +105,7 @@ public static class SpectateOverlay
     {
         try
         {
-            if (!CombatManager.Instance.IsInProgress)
+            if (!IsInCombat())
             {
                 return false;
             }
@@ -122,11 +122,18 @@ public static class SpectateOverlay
         }
     }
 
+    /// <summary>
+    /// 是否还在战斗中。
+    ///
+    /// 用 IsOverOrEnding 的反面而不是 IsInProgress：后者只是 turnState 的透传，
+    /// 战斗结束后仍会保持 true 直到下一场战斗开始，会把奖励界面、地图这些
+    /// 非战斗场面误判成战斗中。
+    /// </summary>
     private static bool IsInCombat()
     {
         try
         {
-            return CombatManager.Instance.IsInProgress;
+            return !CombatManager.Instance.IsOverOrEnding;
         }
         catch
         {
@@ -146,7 +153,7 @@ public static class SpectateOverlay
 
             try
             {
-                _wasInCombat = CombatManager.Instance.IsInProgress;
+                _wasInCombat = !CombatManager.Instance.IsOverOrEnding;
             }
             catch
             {
@@ -354,7 +361,16 @@ public static class SpectateOverlay
         // 「上一拍还在战斗、这一拍不在了」做兜底，避免误伤战斗外的观战。
         try
         {
-            bool inCombat = CombatManager.Instance.IsInProgress;
+            // 用 IsOverOrEnding 而不是 IsInProgress。
+            //
+            // IsInProgress 只是 _turnState.IsInProgress 的透传，战斗结束后
+            // _turnState 并不会立刻失效，它会继续保持 true 一直到下一场战斗，
+            // 于是「从战斗中变成不在战斗中」这个判断永远不成立，
+            // 观战就一直开到了卡牌奖励界面，把奖励界面盖住。
+            //
+            // IsOverOrEnding = IsEnding || !IsInProgress，IsEnding 在主要敌人
+            // 全部死亡的那一刻就为真，比奖励界面弹出更早。
+            bool inCombat = !CombatManager.Instance.IsOverOrEnding;
 
             if (_wasInCombat && !inCombat)
             {
