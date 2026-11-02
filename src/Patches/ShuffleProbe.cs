@@ -131,57 +131,55 @@ internal static class ShuffleTrailFix
         }
     }
 
-    private static void Prefix(ref string trailPath)
+    /// <summary>
+    /// 观战时只保留被观战者的洗牌光效。
+    ///
+    /// 日志实测：
+    ///     shuffle start: player=IRONCLAD(本地) firstCardOwner=IRONCLAD
+    ///     shuffle vfx:   shufflePlayer=IRONCLAD target=SILENT trail=ironclad  ×11
+    ///
+    /// 洗牌是确定性锁步，两端都会执行同一个 Shuffle，所以本地玩家洗牌时
+    /// 也会在本机创建特效——它就播在你的屏幕上，颜色自然是本地角色的。
+    /// 而观战自己的牌堆根本看不见，这个特效纯属干扰。
+    ///
+    /// 猎人（被观战者）的洗牌那次反而一条 vfx 日志都没有，说明他的特效
+    /// 本来就已经正确（或者没有牌需要飞）。
+    ///
+    /// 所以：观战期间，凡是不是被观战者发起的洗牌，直接不创建特效。
+    /// </summary>
+    private static bool Prefix(ref string trailPath, ref NCardFlyShuffleVfx __result)
     {
-        try
-        {
-            // 无条件记录一次，这样能看清原版到底传了什么进来。
-            ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] shuffle vfx: shufflePlayer={_shuffleNetId.ToString() ?? "null"} " +
-                $"target={SpectateOverlay.Target?.NetId.ToString() ?? "null"} " +
-                $"open={SpectateOverlay.IsOpen} trail={trailPath}");
-        }
-        catch
-        {
-            // ignored
-        }
-
         try
         {
             if (!SpectateOverlay.IsOpen)
             {
-                return;
+                return true;
             }
 
-            // 只处理「被观战者正在洗牌」这一种情况。
-            //
-            // 日志已经证明原版的归属链是对的：
-            //     shuffle start: player=猎人 firstCardOwner=猎人  -> 颜色本来就对
-            //     shuffle start: player=铁甲战士 firstCardOwner=铁甲战士 -> 本地自己的洗牌
-            // 上一版不分对象一律替换，反而把本地玩家正确的那次改成了对方的颜色。
-            //
-            // 洗牌是确定性锁步，两端都会执行同一个 Shuffle，所以观战时本地的洗牌
-            // 特效也会播出来。必须按玩家区分，不能一概而论。
-            if (_shuffleNetId == null || SpectateOverlay.Target?.NetId != _shuffleNetId)
+            ulong? targetId = SpectateOverlay.Target?.NetId;
+
+            if (targetId == null || _shuffleNetId != targetId)
             {
-                return;
+                // 不是他的洗牌：不播。
+                __result = null!;
+                return false;
             }
 
-            string? wanted = SpectateOverlay.Target.Character?.TrailPath;
+            string? wanted = SpectateOverlay.Target!.Character?.TrailPath;
 
-            if (string.IsNullOrEmpty(wanted) || wanted == trailPath)
+            if (!string.IsNullOrEmpty(wanted) && wanted != trailPath)
             {
-                return;
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] shuffle trail: {trailPath} -> {wanted}");
+
+                trailPath = wanted!;
             }
 
-            ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] shuffle trail: {trailPath} -> {wanted}");
-
-            trailPath = wanted!;
+            return true;
         }
         catch
         {
-            // ignored
+            return true;
         }
     }
 }
