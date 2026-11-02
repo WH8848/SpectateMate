@@ -34,6 +34,9 @@ internal static class HandMirror
     public static readonly bool Enabled = true;
 
     private const float SpawnOffsetY = 180f;
+
+    // 一张一张发牌的间隔。原版大约 0.08~0.12 秒一张。
+    private const float SpawnStaggerSeconds = 0.09f;
     // 与原版 NCard.AnimCardToPlayPile 一致：0.2s、缩放到 0.8
     private const float PickUpSeconds = 0.08f;
     private const float PickUpLift = 40f;
@@ -389,6 +392,10 @@ internal static class HandMirror
         // 本次重建之前是否已经在显示镜像：false 表示这是首次观战。
         bool firstPaint = !_active;
 
+        // 本次重建里新建了几张牌。回合开始一次抽 5 张时，用它来错开入场时间，
+        // 复刻原版「一张一张发过来」的节奏。
+        int spawnOrder = 0;
+
         for (int i = 0; i < count; i++)
         {
             CardModel model = cards[i];
@@ -427,9 +434,39 @@ internal static class HandMirror
                 holder.Position = firstPaint ? target : DrawPileLocal(layer);
                 holder.SetAngleInstantly(angle);
                 holder.SetScaleInstantly(scale);
-                holder.SetTargetPosition(target);
                 holder.SetTargetAngle(angle);
                 holder.SetTargetScale(scale);
+
+                if (firstPaint)
+                {
+                    holder.SetTargetPosition(target);
+                }
+                else
+                {
+                    // 逐张错开：第 N 张等 N * 间隔 再起飞。
+                    // 起飞前它停在抽牌堆位置，视觉上就是排队等待发牌。
+                    float delay = spawnOrder * SpawnStaggerSeconds;
+                    spawnOrder++;
+
+                    NHandCardHolder captured = holder;
+
+                    if (delay <= 0f)
+                    {
+                        captured.SetTargetPosition(target);
+                    }
+                    else
+                    {
+                        Tween stagger = captured.CreateTween();
+                        stagger.TweenInterval(delay);
+                        stagger.TweenCallback(Callable.From(() =>
+                        {
+                            if (GodotObject.IsInstanceValid(captured))
+                            {
+                                captured.SetTargetPosition(target);
+                            }
+                        }));
+                    }
+                }
             }
 
             next.Add(holder);
