@@ -390,6 +390,8 @@ internal static class HandMirror
         {
             CardModel model = cards[i];
 
+            bool created = false;
+
             if (!existing.TryGetValue(model, out NHandCardHolder? holder) || holder == null)
             {
                 holder = CreateHolder(hand, layer, model);
@@ -397,10 +399,32 @@ internal static class HandMirror
                 {
                     continue;
                 }
+
+                created = true;
             }
             else
             {
                 existing.Remove(model);
+            }
+
+            if (created)
+            {
+                // 关键：新建的 holder 默认停在 (0,0)。如果放着不管，
+                // 随后 ForceRefreshCardIndices -> RefreshLayout 只会设「目标位置」，
+                // holder 自己的 AnimPosition 协程会把 (0,0) 到扇形位置的位移
+                // 演成一次滑动动画 —— 首次观战时整排牌一起从左上角飞进来，
+                // 看起来就是闪烁跳动。这里直接把它摆到目标位置，
+                // 位移为 0，于是没有动画。
+                Vector2 spawn = HandPosHelper.GetPosition(count, i);
+                float spawnAngle = HandPosHelper.GetAngle(count, i);
+                Vector2 spawnScale = HandPosHelper.GetScale(count);
+
+                holder.Position = spawn;
+                holder.SetAngleInstantly(spawnAngle);
+                holder.SetScaleInstantly(spawnScale);
+                holder.SetTargetPosition(spawn);
+                holder.SetTargetAngle(spawnAngle);
+                holder.SetTargetScale(spawnScale);
             }
 
             next.Add(holder);
