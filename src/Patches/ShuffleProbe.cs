@@ -78,8 +78,22 @@ internal static class ShuffleTrailFix
     /// player 和 list 里的牌都应该属于被洗牌的那个人。如果两者不一致，
     /// 说明问题出在 Owner 上，而不是特效那一层。
     /// </summary>
+    /// <summary>
+    /// 当前正在洗牌的玩家。Create 拿不到 player 参数，只能靠这个关联。
+    /// </summary>
+    private static ulong? _shuffleNetId;
+
     private static void ShufflePrefix(MegaCrit.Sts2.Core.Entities.Players.Player player)
     {
+        try
+        {
+            _shuffleNetId = player.NetId;
+        }
+        catch
+        {
+            _shuffleNetId = null;
+        }
+
         try
         {
             string owner = "?";
@@ -126,7 +140,21 @@ internal static class ShuffleTrailFix
                 return;
             }
 
-            string? wanted = SpectateOverlay.Target?.Character?.TrailPath;
+            // 只处理「被观战者正在洗牌」这一种情况。
+            //
+            // 日志已经证明原版的归属链是对的：
+            //     shuffle start: player=猎人 firstCardOwner=猎人  -> 颜色本来就对
+            //     shuffle start: player=铁甲战士 firstCardOwner=铁甲战士 -> 本地自己的洗牌
+            // 上一版不分对象一律替换，反而把本地玩家正确的那次改成了对方的颜色。
+            //
+            // 洗牌是确定性锁步，两端都会执行同一个 Shuffle，所以观战时本地的洗牌
+            // 特效也会播出来。必须按玩家区分，不能一概而论。
+            if (_shuffleNetId == null || SpectateOverlay.Target?.NetId != _shuffleNetId)
+            {
+                return;
+            }
+
+            string? wanted = SpectateOverlay.Target.Character?.TrailPath;
 
             if (string.IsNullOrEmpty(wanted) || wanted == trailPath)
             {
