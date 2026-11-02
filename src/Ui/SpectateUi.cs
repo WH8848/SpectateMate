@@ -292,9 +292,22 @@ internal static class SpectateUi
     // 每拍无条件调用的话，phase 稍有抖动手牌就会上下反复（观感是整排牌在抖）。
     private static bool? _handEnabled;
 
+    // 待确认的目标状态与已连续保持的拍数。
+    //
+    // PlayerTurnPhase.None 同时表示「战斗外」和「敌人回合」，而他出牌的那一瞬间
+    // PlayerCombatState 可能出现短暂的过渡态，phase 会掉到 None。
+    // 如果据此立刻 AnimDisable，就看到「打一张牌整排手牌下移变暗」。
+    // 要求连续多拍一致才真正应用，短暂的抖动会被吸收掉。
+    private static bool? _handEnabledPending;
+    private static int _handEnabledStreak;
+
+    private const int HandEnabledConfirmTicks = 4;
+
     public static void ResetHandEnabledCache()
     {
         _handEnabled = null;
+        _handEnabledPending = null;
+        _handEnabledStreak = 0;
     }
 
     public static void SyncHandEnabled(Player target)
@@ -324,10 +337,28 @@ internal static class SpectateUi
 
             if (_handEnabled == active)
             {
+                _handEnabledPending = null;
+                _handEnabledStreak = 0;
+                return;
+            }
+
+            // 目标状态变了：重新计数，连续确认足够多次才真正应用。
+            if (_handEnabledPending != active)
+            {
+                _handEnabledPending = active;
+                _handEnabledStreak = 0;
+            }
+
+            _handEnabledStreak++;
+
+            if (_handEnabledStreak < HandEnabledConfirmTicks)
+            {
                 return;
             }
 
             _handEnabled = active;
+            _handEnabledPending = null;
+            _handEnabledStreak = 0;
             InvokeMethod(hand, active ? "AnimEnable" : "AnimDisable");
         });
     }
@@ -366,7 +397,7 @@ internal static class SpectateUi
             }
 
             // 清掉启用状态缓存，下次观战重新判断。
-            _handEnabled = null;
+            ResetHandEnabledCache();
 
             // 关键：观战期间 ActiveHolders 被劫持成镜像列表，RefreshLayout 只摆放
             // 镜像 holder。这段时间里你自己新抽的牌虽然已经进了 CardHolderContainer，

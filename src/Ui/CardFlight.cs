@@ -41,6 +41,12 @@ public static class CardFlight
 
         /// <summary>最早可以离开播放区的时间戳（毫秒）。</summary>
         public ulong ReadyAtMs;
+
+        /// <summary>上一拍看到的去向。</summary>
+        public PileType? LastSeen;
+
+        /// <summary>该去向已连续保持的拍数。</summary>
+        public int StableCount;
     }
 
     private static readonly List<SettlingCard> Settling = new();
@@ -91,6 +97,26 @@ public static class CardFlight
             catch
             {
                 destination = null;
+            }
+
+            // 去向必须连续两拍一致才采纳。
+            //
+            // 虚无牌的实际流转是 Play -> Discard -> Exhaust：先按普通牌进弃牌堆，
+            // 再被虚无效果消耗。如果第一拍看到 Discard 就送走，
+            // 后面的 Exhaust 再也拿不到，表现就是「本该碎裂的牌飞进了弃牌堆」。
+            // 多等一拍，中转状态就被过滤掉了。
+            if (destination != item.LastSeen)
+            {
+                item.LastSeen = destination;
+                item.StableCount = 0;
+                continue;
+            }
+
+            item.StableCount++;
+
+            if (item.StableCount < 2)
+            {
+                continue;
             }
 
             switch (destination)
