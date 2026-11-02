@@ -433,13 +433,18 @@ internal static class HandMirror
                 float angle = HandPosHelper.GetAngle(count, i);
                 Vector2 scale = HandPosHelper.GetScale(count);
 
-                holder.Position = DrawPileLocal(layer);
+                Vector2 spawnFrom = DrawPileLocal(layer);
+
+                holder.Position = spawnFrom;
                 holder.SetAngleInstantly(angle);
 
-                // 原版对「从牌堆进手牌」的卡片做了 From(Vector2.Zero)，
-                // 也就是先缩到没有再弹出来。这里同样从 0 开始，
-                // 由 holder 自身的缩放补间放到目标大小。
-                holder.SetScaleInstantly(Vector2.Zero);
+                // 不要在这里把缩放设成 0 再让它长出来：
+                // RefreshLayout 随后会用 SetScaleInstantly 把缩放直接拍回目标值，
+                // 中间那一帧的 0 尺度看起来就是「原地蹦出来」。
+                // 保持正常缩放，让观感来自位置滑动。
+                holder.SetScaleInstantly(scale);
+
+                Diag($"spawn from {spawnFrom} to {target} (layer={layer.Size})");
                 holder.SetTargetAngle(angle);
                 holder.SetTargetScale(scale);
 
