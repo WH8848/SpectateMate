@@ -368,6 +368,8 @@ public static class CardFlight
 
             Detached.Remove(holder);
 
+            // Create 内部已经把特效挂到 cardNode.CardVfxContainer 上了，
+            // 千万不要再 AddChild 一次（会把它从卡片下摘走）。
             NCardExhaustQuickVfx? vfx = NCardExhaustQuickVfx.Create(card);
             if (vfx == null)
             {
@@ -375,13 +377,26 @@ public static class CardFlight
                 return;
             }
 
-            NCombatRoom.Instance?.Ui?.AddChildSafely(vfx);
             TaskHelper.RunSafely(vfx.PlayAnimation());
 
-            // 卡片已交给特效，holder 只是空壳。
+            // 不能立刻销毁 holder。
+            //
+            // 卡片和特效都还挂在 holder 的子树里：holder 一销毁，
+            // CardVfxContainer 跟着没，特效连一帧都播不出来——这正是
+            // 「既看不到碎裂、也没有任何反应」的原因。
+            // PlayAnimation 内部会在 0.4 秒预备后销毁卡片本体、2 秒后销毁自己，
+            // 所以这里只要延迟回收空壳就行。
             if (GodotObject.IsInstanceValid(holder))
             {
-                holder.QueueFree();
+                Tween cleanup = holder.CreateTween();
+                cleanup.TweenInterval(2.6f);
+                cleanup.TweenCallback(Callable.From(() =>
+                {
+                    if (GodotObject.IsInstanceValid(holder))
+                    {
+                        DestroyHolder(holder);
+                    }
+                }));
             }
         }
         catch (Exception e)

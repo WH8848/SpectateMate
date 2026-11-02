@@ -101,6 +101,34 @@ internal static class CombatWidgetRebind
             $"[{ModEntry.ModId}] pile {type} -> netId={player.NetId} ({next.Cards.Count} cards)");
     }
 
+    /// <summary>
+    /// 同步消耗牌堆按钮的可见性。
+    ///
+    /// NExhaustPileButton 只在 Initialize 里按 Cards.Count 判断一次是否显示，
+    /// 另外就是 AddCard 时 AnimIn。虚无牌是「从手牌直接消耗」，
+    /// 既不经过 Initialize 也不经过 AddCard，按钮就一直藏着——
+    /// 观战时会觉得「进阶之灾消耗了，但消耗牌堆没出现」。
+    /// </summary>
+    public static void SyncExhaustVisibility(NCombatCardPile? pile, int count)
+    {
+        if (pile is not NExhaustPileButton exhaust || !GodotObject.IsInstanceValid(exhaust))
+        {
+            return;
+        }
+
+        if (count > 0)
+        {
+            if (!exhaust.Visible)
+            {
+                exhaust.AnimIn();
+            }
+        }
+        else if (exhaust.Visible)
+        {
+            exhaust.AnimOut();
+        }
+    }
+
     /// <summary>每拍强制对齐牌堆计数（远端变化不会为本机发事件）。</summary>
     public static void SyncPileCount(NCombatCardPile? pile, int count)
     {

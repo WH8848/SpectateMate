@@ -501,6 +501,9 @@ internal static class SpectateUi
             CombatWidgetRebind.SyncPileCount(piles.DrawPile, state.DrawPile.Cards.Count);
             CombatWidgetRebind.SyncPileCount(piles.DiscardPile, state.DiscardPile.Cards.Count);
             CombatWidgetRebind.SyncPileCount(piles.ExhaustPile, state.ExhaustPile.Cards.Count);
+
+            // 消耗牌堆按钮的显示与否也要每拍跟着走，不能只靠 AddCard 触发。
+            CombatWidgetRebind.SyncExhaustVisibility(piles.ExhaustPile, state.ExhaustPile.Cards.Count);
         });
     }
 
