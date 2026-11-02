@@ -69,6 +69,8 @@ public static class SpectateChoice
         _prefs = prefs;
         _filter = filter;
         _owner = player;
+
+        _lastPileCount = -1;
     }
 
     public static void BeginHandSelection(Player player, CardSelectorPrefs prefs, Func<CardModel, bool>? filter)
@@ -140,8 +142,48 @@ public static class SpectateChoice
     }
 
     /// <summary>每拍调用：他在选牌就打开只读界面，选完就关掉。</summary>
+    /// <summary>上一次观察到的候选牌堆数量，用于判定他是否已经选完。</summary>
+    private static int _lastPileCount = -1;
+
     public static void Tick(Player? target, NetScreenType screenType)
     {
+        // 先看候选牌堆有没有被选走。
+        //
+        // 原本靠 PlayerChoiceReceived 收尾，但日志证明那个事件在我们的场景里
+        // 不触发：_mode 一直停在 CombatPile，Tick 每拍都判定该显示，
+        // Show() 发现界面已被移除就又建一个，界面于是无限重建，
+        // 表现出来就是「卡在选卡页面」，而且退出再进也一样。
+        //
+        // 牌堆内容变少意味着他选走了一张，这是最直接的信号。
+        if (_mode == Mode.CombatPile && _pile != null)
+        {
+            int count = -1;
+
+            try
+            {
+                count = _pile.Cards.Count;
+            }
+            catch
+            {
+                count = -1;
+            }
+
+            if (count >= 0)
+            {
+                if (_lastPileCount >= 0 && count < _lastPileCount)
+                {
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] choice pile shrank {_lastPileCount} -> {count}; closing");
+
+                    Close(clearMode: true);
+                    _lastPileCount = -1;
+                    return;
+                }
+
+                _lastPileCount = count;
+            }
+        }
+
         // 不能用 screenType == CardSelection 作为条件。
         //
         // 这个枚举只有在「本机自己弹出选择界面」时才会变成 CardSelection。
@@ -453,6 +495,7 @@ public static class SpectateChoice
             _pile = null;
             _prefs = null;
             _filter = null;
+            _lastPileCount = -1;
         }
     }
 
