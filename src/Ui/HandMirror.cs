@@ -112,7 +112,12 @@ internal static class HandMirror
             }
 
             Vector2 pos = holder.Position;
-            bool off = (pos - expect).Length() > 80f;
+
+            // 两个判据都算异常：
+            //   - 实际位置偏离期望；
+            //   - 目标位置本身就偏离期望（说明排版时算错了，比如被当成焦点抬高）。
+            bool off = (pos - expect).Length() > 80f
+                || (holder.TargetPosition - expect).Length() > 40f;
 
             if (!off)
             {
@@ -153,12 +158,17 @@ internal static class HandMirror
                     $"tgt={holder.TargetPosition} count={Holders.Count} active={active} " +
                     $"visible={holder.Visible} mod={holder.Modulate}");
 
-                // 目标值和期望值不一致，说明上一次排版用的是别的张数。
-                // 立刻按当前镜像列表重排一次。
+                // 目标值和期望值不一致，通常是两个原因之一：
+                //   1. 上一次排版用的张数和现在不同；
+                //   2. 排到一半焦点还在某张牌上，被按「焦点牌」抬高了
+                //      （tgt 的 Y 会带上 -Hitbox.Size.Y/2 的偏移）。
+                // 这里无条件清掉焦点再重排，两种原因都能修正。
                 try
                 {
                     if (_lastHand != null && GodotObject.IsInstanceValid(_lastHand))
                     {
+                        SetFocused(_lastHand, null);
+                        LastFocusedIdxField?.SetValue(_lastHand, -1);
                         _lastHand.ForceRefreshCardIndices();
                     }
                 }
