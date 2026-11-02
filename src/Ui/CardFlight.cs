@@ -479,11 +479,17 @@ public static class CardFlight
 
             card.Reparent(container);
 
+            string trail = TrailPath(owner) ?? string.Empty;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] fly-from-hand: {model?.Id.Entry} -> {pile} " +
+                $"owner={owner.NetId} spectate={SpectateOverlay.IsOpen} trail={trail}");
+
             NCardFlyVfx? vfx = NCardFlyVfx.Create(
                 card,
                 pile,
                 isAddingToPile: true,
-                TrailPath(owner) ?? string.Empty);
+                trail);
 
             if (vfx == null)
             {
