@@ -396,6 +396,13 @@ internal static class HandMirror
         // 复刻原版「一张一张发过来」的节奏。
         int spawnOrder = 0;
 
+        // 只有「观战期间的重建」才播发牌动画。
+        //
+        // 这里读到的 _active 还是上一拍的值：首次观战和重新观战时它是 false
+        // （Hide 会清掉），那些牌直接落位，不会整排从抽牌堆滑进来；
+        // 只有观战中途手牌集合发生变化（抽牌）才走滑入路径。
+        bool slideIn = _active;
+
         for (int i = 0; i < count; i++)
         {
             CardModel model = cards[i];
@@ -423,63 +430,60 @@ internal static class HandMirror
 
             if (created)
             {
-                // 新建的 holder 默认停在 (0,0)。放着不管的话，
-                // 随后 RefreshLayout 只会设「目标位置」，holder 自己的 AnimPosition
-                // 协程会把 (0,0) 到扇形位置的位移演成滑动动画。
-                //
-                // 统一从抽牌堆起飞、逐张错开——首次观战也走同一条路径。
-                // 起点是抽牌堆中心（不是原点），所以不会出现「整排牌从左上角冲进来」。
                 Vector2 target = HandPosHelper.GetPosition(count, i);
                 float angle = HandPosHelper.GetAngle(count, i);
                 Vector2 scale = HandPosHelper.GetScale(count);
 
-                Vector2 spawnFrom = DrawPileLocal(layer);
-
-                holder.Position = spawnFrom;
-                holder.SetAngleInstantly(angle);
-
-                // 不要在这里把缩放设成 0 再让它长出来：
-                // RefreshLayout 随后会用 SetScaleInstantly 把缩放直接拍回目标值，
-                // 中间那一帧的 0 尺度看起来就是「原地蹦出来」。
-                // 保持正常缩放，让观感来自位置滑动。
                 holder.SetScaleInstantly(scale);
-
-                Diag($"spawn from {spawnFrom} to {target} (layer={layer.Size})");
+                holder.SetAngleInstantly(angle);
                 holder.SetTargetAngle(angle);
                 holder.SetTargetScale(scale);
 
-                // 逐张错开：第 N 张等 N * 间隔 再起飞。
-                //
-                // 等待期间保持透明。它此刻正压在抽牌堆按钮上，如果可见，
-                // 一次抽好几张时就会看到一叠牌堆在牌堆图标上，很像布局错乱。
-                // 用 Modulate 而不是 Visible：后者会把它踢出 ActiveHolders，
-                // 导致布局在它出现前后各重算一次，反而更跳。
-                float delay = spawnOrder * SpawnStaggerSeconds;
-                spawnOrder++;
-
-                NHandCardHolder captured = holder;
-
-                if (delay <= 0f)
+                if (!slideIn)
                 {
-                    captured.Modulate = Colors.White;
-                    captured.SetTargetPosition(target);
+                    // 首次观战 / 重新观战：直接落位，不做任何入场动画。
+                    holder.Modulate = Colors.White;
+                    holder.Position = target;
+                    holder.SetTargetPosition(target);
                 }
                 else
                 {
-                    captured.Modulate = new Color(1f, 1f, 1f, 0f);
+                    // 观战中途抽牌：从抽牌堆滑入，逐张错开。
+                    //
+                    // 等待期间保持透明——它此刻正压在抽牌堆按钮上，如果可见，
+                    // 一次抽好几张时就会看到一叠牌堆在牌堆图标上。
+                    // 用 Modulate 而不是 Visible：后者会把它踢出 ActiveHolders，
+                    // 导致布局在它出现前后各重算一次，反而更跳。
+                    Vector2 spawnFrom = DrawPileLocal(layer);
+                    holder.Position = spawnFrom;
 
-                    Tween stagger = captured.CreateTween();
-                    stagger.TweenInterval(delay);
-                    stagger.TweenCallback(Callable.From(() =>
+                    float delay = spawnOrder * SpawnStaggerSeconds;
+                    spawnOrder++;
+
+                    NHandCardHolder captured = holder;
+
+                    if (delay <= 0f)
                     {
-                        if (!GodotObject.IsInstanceValid(captured))
-                        {
-                            return;
-                        }
-
                         captured.Modulate = Colors.White;
                         captured.SetTargetPosition(target);
-                    }));
+                    }
+                    else
+                    {
+                        captured.Modulate = new Color(1f, 1f, 1f, 0f);
+
+                        Tween stagger = captured.CreateTween();
+                        stagger.TweenInterval(delay);
+                        stagger.TweenCallback(Callable.From(() =>
+                        {
+                            if (!GodotObject.IsInstanceValid(captured))
+                            {
+                                return;
+                            }
+
+                            captured.Modulate = Colors.White;
+                            captured.SetTargetPosition(target);
+                        }));
+                    }
                 }
             }
 
