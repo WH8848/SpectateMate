@@ -40,7 +40,7 @@ public static class ModEntry
             // CardSelectCmd 是 static class，无法作为 RitsuLib 的泛型补丁目标，改用 Harmony。
             ChoiceProbe.Install();
             HandStatePatch.Install();
-            ShuffleProbe.Install();
+            ShuffleTrailFix.Install();
             RitsuLibFramework.ApplyRequiredPatcher(patcher, OnRequiredPatchFailed);
 
             RitsuLibFramework.SubscribeLifecycle<RunEndedEvent>(_ => SpectateOverlay.CloseAll());

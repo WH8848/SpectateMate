@@ -3,26 +3,25 @@ using HarmonyLib;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
-using MegaCrit.Sts2.Core.Entities.Players;
+using SpectateMate.Ui;
 
 namespace SpectateMate.Patches;
 
 /// <summary>
-/// 洗牌光效的探针。
+/// 把洗牌光效的颜色改成被观战者的。
 ///
-/// 原版 CardPileCmd 里洗牌是这样触发的：
+/// 原版 CardPileCmd 里：
 ///
 ///     string trailPath = card.Owner.Character.TrailPath;
-///     Node vfxContainer = card.Owner.Creature.GetVfxContainer();
 ///     NCardFlyShuffleVfx.Create(oldPile, targetPile, trailPath);
 ///
-/// 也就是说颜色完全由 trailPath 决定，而它取自牌的 Owner。
-/// 观战如果看到的是自己的颜色，说明这条链上的 Owner 不对。
+/// 但观战时这条链拿到的 Owner 是本地玩家——日志实测：
+/// 本地是铁甲战士、观战猎人，实际传进去的却是 card_trail_ironclad。
 ///
-/// 这里不修改任何行为，只在创建时记下 trailPath 和两端牌堆的数量，
-/// 用来判断到底是「路径本身就是对方的」还是「被换成了本地玩家的」。
+/// 观战语义很明确：屏幕上的一切都应该是被观战者的，所以这里直接把
+/// trailPath 换成他的。非观战状态完全不动。
 /// </summary>
-internal static class ShuffleProbe
+internal static class ShuffleTrailFix
 {
     private static Harmony? _harmony;
 
@@ -30,7 +29,7 @@ internal static class ShuffleProbe
     {
         try
         {
-            _harmony = new Harmony($"{ModEntry.ModId}.shuffle");
+            _harmony = new Harmony($"{ModEntry.ModId}.shuffletrail");
 
             var target = AccessTools.Method(
                 typeof(NCardFlyShuffleVfx),
@@ -39,67 +38,39 @@ internal static class ShuffleProbe
 
             if (target == null)
             {
-                ModEntry.Log.Warn($"[{ModEntry.ModId}] shuffle probe: Create not found");
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] shuffle trail: Create not found");
                 return;
             }
 
-            _harmony.Patch(target, postfix: new HarmonyMethod(typeof(ShuffleProbe), nameof(Postfix)));
-            ModEntry.Log.Info($"[{ModEntry.ModId}] shuffle probe: hooked");
+            _harmony.Patch(target, prefix: new HarmonyMethod(typeof(ShuffleTrailFix), nameof(Prefix)));
+            ModEntry.Log.Info($"[{ModEntry.ModId}] shuffle trail: hooked");
         }
         catch (Exception e)
         {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] shuffle probe failed: {e.Message}");
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] shuffle trail patch failed: {e.Message}");
         }
     }
 
-    private static void Postfix(CardPile startPile, CardPile targetPile, string trailPath)
+    private static void Prefix(ref string trailPath)
     {
         try
         {
-            string start = startPile != null ? startPile.Type.ToString() : "?";
-            string target = targetPile != null ? targetPile.Type.ToString() : "?";
-            // CardPile 本身不持有 owner，从它里面的牌取。
-            string owner = "?";
-            string character = "?";
-            int cardCount = -1;
-
-            try
+            if (!SpectateOverlay.IsOpen)
             {
-                cardCount = startPile?.Cards.Count ?? -1;
-
-                CardModel? sample = startPile != null && startPile.Cards.Count > 0
-                    ? startPile.Cards[0]
-                    : null;
-
-                if (sample != null)
-                {
-                    owner = sample.Owner?.NetId.ToString() ?? "owner-null";
-                    character = sample.Owner?.Character?.Id.Entry ?? "char-null";
-                }
-                else
-                {
-                    owner = "no-card";
-                    character = "no-card";
-                }
-            }
-            catch (Exception e)
-            {
-                owner = "err:" + e.GetType().Name;
+                return;
             }
 
-            ulong localId = 0;
-            try
+            string? wanted = SpectateOverlay.Target?.Character?.TrailPath;
+
+            if (string.IsNullOrEmpty(wanted) || wanted == trailPath)
             {
-                localId = MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.NetId;
-            }
-            catch
-            {
-                localId = 0;
+                return;
             }
 
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] shuffle vfx: {start}->{target} cards={cardCount} " +
-                $"owner={owner} char={character} local={localId} trail={trailPath}");
+                $"[{ModEntry.ModId}] shuffle trail: {trailPath} -> {wanted}");
+
+            trailPath = wanted!;
         }
         catch
         {

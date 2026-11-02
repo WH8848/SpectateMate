@@ -316,7 +316,7 @@ public static class CardFlight
                 item.Card,
                 pile,
                 isAddingToPile: true,
-                owner.Character.TrailPath);
+                TrailPath(owner));
 
             if (vfx == null)
             {
@@ -406,6 +406,36 @@ public static class CardFlight
     }
 
     /// <summary>
+    /// 光带颜色：观战时统一取被观战者的，其余情况用牌主的。
+    ///
+    /// 观战时 Owner 相关的链路可能解析到本地玩家（洗牌特效就实测拿错了），
+    /// 而屏幕上的一切都应该是被观战者的，所以这里按观战目标取。
+    /// </summary>
+    private static string? TrailPath(Player? owner)
+    {
+        try
+        {
+            if (SpectateOverlay.IsOpen && SpectateOverlay.Target?.Character is { } target)
+            {
+                return target.TrailPath;
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+
+        try
+        {
+            return owner?.Character?.TrailPath;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// 从手牌直接进弃牌堆 / 抽牌堆时补一份飞行动画。
     ///
     /// 原版在 CardPileCmd 里做的是：把卡片 reparent 到角色 VFX 容器，
@@ -453,7 +483,7 @@ public static class CardFlight
                 card,
                 pile,
                 isAddingToPile: true,
-                owner.Character.TrailPath);
+                TrailPath(owner));
 
             if (vfx == null)
             {
