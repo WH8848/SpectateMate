@@ -80,7 +80,30 @@ public static class SpectateOverlay
             return;
         }
 
+        // 只在战斗中允许观战。
+        //
+        // 战斗之外（奖励界面、地图、商店、篝火）没有可镜像的实时状态，
+        // 强行进入只会让各处 rebind 拿到失效节点，之前的空覆盖层挡住卡牌奖励
+        // 就是这么来的。这里从入口处直接拒掉，比在内部逐处兜底干净。
+        if (!IsInCombat())
+        {
+            ModEntry.Log.Info($"[{ModEntry.ModId}] spectate is only available during combat");
+            return;
+        }
+
         Open(player);
+    }
+
+    private static bool IsInCombat()
+    {
+        try
+        {
+            return CombatManager.Instance.IsInProgress;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static void Open(Player player)
