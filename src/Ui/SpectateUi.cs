@@ -200,9 +200,9 @@ internal static class SpectateUi
             // RelicObtained, and its Portrait.Initialize moves the SHARED
             // Character.Icon into our portrait -> two avatars stacked on top of
             // each other and the teammate's own avatar left empty.
-            Step("gold", () => RebindGold(topBar.Gold, shown));
-            Step("hp", () => RebindHp(topBar.Hp, shown));
-            Step("deck", () => RebindDeck(topBar.Deck, shown));
+            Step("gold", () => TopBarRebind.Gold(topBar.Gold, shown));
+            Step("hp", () => TopBarRebind.Hp(topBar.Hp, shown));
+            Step("deck", () => TopBarRebind.Deck(topBar.Deck, shown));
 
             Step("potion", () =>
             {
@@ -324,139 +324,6 @@ internal static class SpectateUi
         if (Peek(pile, "_countLabel") is MegaLabel label)
         {
             label.SetTextAutoSize(count.ToString());
-        }
-    }
-
-    private static void RebindGold(NTopBarGold? gold, Player player)
-    {
-        if (gold == null || !GodotObject.IsInstanceValid(gold))
-        {
-            return;
-        }
-
-        EventInfo? evt = typeof(Player).GetEvent("GoldChanged");
-        MethodInfo? method = typeof(NTopBarGold).GetMethod(
-            "UpdateGold",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        if (evt == null || method == null)
-        {
-            gold.Initialize(player);
-            return;
-        }
-
-        Delegate? handler = Delegate.CreateDelegate(evt.EventHandlerType!, gold, method);
-        if (handler == null)
-        {
-            gold.Initialize(player);
-            return;
-        }
-
-        Player? previous = Read<Player?>(gold, "_player");
-        if (previous != null)
-        {
-            evt.RemoveEventHandler(previous, handler);
-        }
-
-        Set(gold, "_player", player);
-        evt.AddEventHandler(player, handler);
-        Set(gold, "_currentGold", player.Gold);
-
-        if (Peek(gold, "_goldLabel") is MegaLabel label)
-        {
-            label.SetTextAutoSize($"{player.Gold}");
-        }
-    }
-
-    /// <summary>
-    /// Deck button: shows HIS deck size, and because `_player` is re-pointed,
-    /// clicking it opens NDeckViewScreen for him instead of for us.
-    /// </summary>
-    private static void RebindDeck(NTopBarDeckButton? deck, Player player)
-    {
-        if (deck == null || !GodotObject.IsInstanceValid(deck))
-        {
-            return;
-        }
-
-        EventInfo? onAdd = typeof(CardPile).GetEvent("CardAddFinished");
-        EventInfo? onRemove = typeof(CardPile).GetEvent("CardRemoveFinished");
-        MethodInfo? changed = typeof(NTopBarDeckButton).GetMethod(
-            "OnPileContentsChanged",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        if (onAdd == null || onRemove == null || changed == null)
-        {
-            deck.Initialize(player);
-            return;
-        }
-
-        Delegate? handler = Delegate.CreateDelegate(onAdd.EventHandlerType!, deck, changed);
-        if (handler == null)
-        {
-            deck.Initialize(player);
-            return;
-        }
-
-        if (Peek(deck, "_pile") is CardPile oldPile)
-        {
-            onAdd.RemoveEventHandler(oldPile, handler);
-            onRemove.RemoveEventHandler(oldPile, handler);
-        }
-
-        CardPile newPile = PileType.Deck.GetPile(player);
-        Set(deck, "_player", player);
-        Set(deck, "_pile", newPile);
-        onAdd.AddEventHandler(newPile, handler);
-        onRemove.AddEventHandler(newPile, handler);
-
-        InvokeMethod(deck, "OnPileContentsChanged");
-    }
-
-    private static void RebindHp(NTopBarHp? hp, Player player)
-    {
-        if (hp == null || !GodotObject.IsInstanceValid(hp))
-        {
-            return;
-        }
-
-        EventInfo? onCurrent = typeof(Creature).GetEvent("CurrentHpChanged");
-        EventInfo? onMax = typeof(Creature).GetEvent("MaxHpChanged");
-        MethodInfo? method = typeof(NTopBarHp).GetMethod(
-            "UpdateHealth",
-            BindingFlags.Instance | BindingFlags.NonPublic);
-
-        if (onCurrent == null || onMax == null || method == null)
-        {
-            hp.Initialize(player);
-            return;
-        }
-
-        Delegate? handler = Delegate.CreateDelegate(onCurrent.EventHandlerType!, hp, method);
-        if (handler == null)
-        {
-            hp.Initialize(player);
-            return;
-        }
-
-        Player? previous = Read<Player?>(hp, "_player");
-        if (previous?.Creature is { } oldCreature)
-        {
-            onCurrent.RemoveEventHandler(oldCreature, handler);
-            onMax.RemoveEventHandler(oldCreature, handler);
-        }
-
-        Set(hp, "_player", player);
-
-        if (player.Creature is { } creature)
-        {
-            onCurrent.AddEventHandler(creature, handler);
-            onMax.AddEventHandler(creature, handler);
-
-            if (Peek(hp, "_hpLabel") is MegaLabel label)
-            {
-                label.SetTextAutoSize($"{creature.CurrentHp}/{creature.MaxHp}");
-            }
         }
     }
 
