@@ -5,7 +5,7 @@
     "contentfolder" "E:\MOD\sts2\godot_project\Spectate teammate\workshop\content"
     "previewfile" "E:\MOD\sts2\godot_project\Spectate teammate\workshop\preview.png"
     "visibility" "0"
-    "title" "（功能）右键队友头像观战"
-    "description" "右键队友头像即可观战，只读、纯客户端。观战时看到的是他的全部状态：手牌（真实卡面与动画）、能量、遗物、药水、牌堆、选牌过程、悬停高亮。再次按 Esc（可改键）退出。支持加速模式，发牌节奏跟随原版。"
-    "changenote" "首次发布"
+    "title" "Spectate Mate"
+    "description" "Right-click a teammate's avatar during combat to watch them play, in real time.<br><br>While spectating you see THEIR: hand (real card visuals and animations), energy, stars, relics, potions, draw/discard/exhaust piles, card selection, and hover highlight.<br><br>Read-only and client-side only: nothing you do while spectating can affect their game, and no data is sent over the network.<br><br>Press Esc (rebindable) to return to your own view. Spectating ends automatically when combat ends.<br><br>Requires RitsuLib."
+    "changenote" "Initial release"
 }
