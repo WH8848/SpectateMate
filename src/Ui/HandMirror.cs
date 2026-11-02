@@ -98,38 +98,6 @@ internal static class HandMirror
     private static readonly System.Reflection.MethodInfo? FocusedHolderSetter =
         FocusedHolderProp?.GetSetMethod(nonPublic: true);
 
-    /// <summary>
-    /// 低频强制重排。
-    ///
-    /// 洗牌后重新发牌时，偶尔会有几张 holder 停在错误的位置上（比如 3、4 号
-    /// 一起偏高、间距被压扁），而且要等下一次悬停或打牌才恢复。
-    /// 与其继续追查每一处触发条件，不如每半秒兜一次底：
-    /// ForceRefreshCardIndices 是幂等的，代价只有一次遍历。
-    /// </summary>
-    private static void PeriodicRelayout(NPlayerHand hand)
-    {
-        try
-        {
-            ulong now = Godot.Time.GetTicksMsec();
-
-            if (now - _lastRelayoutMs < RelayoutIntervalMs)
-            {
-                return;
-            }
-
-            _lastRelayoutMs = now;
-            hand.ForceRefreshCardIndices();
-        }
-        catch
-        {
-            // ignored
-        }
-    }
-
-    private const ulong RelayoutIntervalMs = 500;
-
-    private static ulong _lastRelayoutMs;
-
     private static int ReadLastFocusedIdx(NPlayerHand hand)
     {
         try
@@ -233,7 +201,6 @@ internal static class HandMirror
 
             CardFlight.UpdateSettling();
             PruneStaleFocus();
-            PeriodicRelayout(hand);
 
             StringName key = BuildKey(cards);
             if (key != _key)
