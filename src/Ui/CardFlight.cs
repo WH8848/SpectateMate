@@ -136,11 +136,16 @@ public static class CardFlight
                     DestroyHolder(item.Holder);
                     break;
 
-                case null when IsPower(item.Model):
-                    // 能力卡打出后会彻底消失，Pile 永久变成 None，不进任何牌堆。
+                case null or PileType.None when IsPower(item.Model):
+                    // 能力卡打出后会彻底消失，不进任何牌堆。
                     // 原版在这条路径上播的是 PlayPowerCardFlyVfx（飞向能力栏），
                     // 不会回到 Pile 判定。如果不在这里收掉，卡片会永远停在播放区。
+                    //
+                    // 注意要把 PileType.None 和 null 都算上：
+                    // 卡牌消失时 Model.Pile 可能退化成 Pile 对象且 Type = None，
+                    // 只匹配 null 会漏掉这种情况（上一版就是这么漏的）。
                     Settling.Remove(item);
+                    ModEntry.Log.Info($"[{ModEntry.ModId}] power card settled: {item.Model.Id.Entry}");
                     DestroyHolder(item.Holder);
                     break;
 
