@@ -47,7 +47,32 @@ internal static class CombatWidgetRebind
 
         if (current == next)
         {
-            ModEntry.Log.Info($"[{ModEntry.ModId}] pile {type} already bound to netId={player.NetId}");
+            // 绑定没变，但可见性仍要按当前数量刷新一次。
+            //
+            // 观战期间 SyncExhaustVisibility 是按被观战者的数量驱动的，
+            // 他没消耗牌时会把按钮 AnimOut 掉。退出观战后如果这里直接 return，
+            // 按钮就留在隐藏状态——于是「自己打出消耗牌，消耗牌堆不出现」，
+            // 而再观战一次（数量不同触发重绑）它又冒出来了。
+            if (pile is NExhaustPileButton same)
+            {
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] pile {type} already bound; refreshing visibility " +
+                    $"({next.Cards.Count} cards, visible={same.Visible})");
+
+                if (next.Cards.Count > 0)
+                {
+                    same.AnimIn();
+                }
+                else
+                {
+                    same.AnimOut();
+                }
+            }
+            else
+            {
+                ModEntry.Log.Info($"[{ModEntry.ModId}] pile {type} already bound to netId={player.NetId}");
+            }
+
             return;
         }
 
@@ -58,6 +83,16 @@ internal static class CombatWidgetRebind
         Delegate? removeHandler = null;
 
         EventArgsPair(ref addHandler, ref removeHandler, pile, current, onAdd, onRemove);
+
+        if (addHandler == null || removeHandler == null)
+        {
+            // 委托建不起来就绑不上事件，按钮的计数和显示都不会再更新。
+            // 这是一条容易静默失败的路径，必须留痕。
+            ModEntry.Log.Warn(
+                $"[{ModEntry.ModId}] pile {type}: handler build failed " +
+                $"(add={(addHandler != null)} remove={(removeHandler != null)} " +
+                $"onAdd={(onAdd != null)} onRemove={(onRemove != null)})");
+        }
 
         EventInfo? evtAdd = typeof(CardPile).GetEvent("CardAddFinished");
         EventInfo? evtRemove = typeof(CardPile).GetEvent("CardRemoveFinished");
@@ -92,6 +127,10 @@ internal static class CombatWidgetRebind
         {
             // 有牌就滑入显示，没牌就滑出隐藏——退出观战重绑回自己时同样适用，
             // 否则队友有消耗牌、自己没有时，按钮会一直留在屏幕上。
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] exhaust visibility <- {next.Cards.Count} cards, " +
+                $"currently visible={exhaust.Visible}");
+
             if (next.Cards.Count > 0)
             {
                 exhaust.AnimIn();
