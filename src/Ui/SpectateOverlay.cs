@@ -90,6 +90,7 @@ public static class SpectateOverlay
         try
         {
             _target = player;
+            AvatarHighlight.Set(player);
 
             try
             {
@@ -229,6 +230,8 @@ public static class SpectateOverlay
             _hoverLine = null;
             _target = null;
             _handKey = string.Empty;
+            AvatarHighlight.Set(null);
+
             // 先恢复手牌状态：Apply(null) 里有一串 rebind，任何一处抛异常
             // 都会跳过它，导致手牌一直停在灰色/下移状态。
             SpectateUi.RestoreOwnHandState();
@@ -303,6 +306,16 @@ public static class SpectateOverlay
             }
 
             _wasInCombat = inCombat;
+        }
+        catch
+        {
+            // ignored
+        }
+
+        // 观战目标头像的高亮：游戏在焦点/悬停变化时会重算，这里每拍重申一次。
+        try
+        {
+            AvatarHighlight.Refresh();
         }
         catch
         {

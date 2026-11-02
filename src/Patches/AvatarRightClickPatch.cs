@@ -50,6 +50,7 @@ internal sealed class AvatarRightClickPatch : IPatchMethod
 
             hitbox.SetMeta(BoundFlag, true);
             SpectateRegistry.Register(player);
+            AvatarHighlight.Register(player, __instance);
 
             hitbox.Connect(NClickableControl.SignalName.MouseReleased, Callable.From<InputEvent>(evt =>
             {
@@ -58,6 +59,10 @@ internal sealed class AvatarRightClickPatch : IPatchMethod
                     if (evt is InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Right })
                     {
                         SpectateOverlay.Toggle(player);
+
+                        // 高亮由 AvatarHighlight 接管（观战期间持续点亮），
+                        // 所以这里只需把焦点还回去，避免残留的焦点框干扰。
+                        hitbox.ReleaseFocus();
                     }
                 }
                 catch (Exception e)
