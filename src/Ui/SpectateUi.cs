@@ -224,111 +224,6 @@ internal static class SpectateUi
     /// combat start, so when spectating begins mid-combat each button still holds
     /// a reference to YOUR pile — its counters and contents stay yours.
     /// </summary>
-    private static void RebindPileButton(NCombatCardPile? pile, Player player)
-    {
-        if (pile == null || !GodotObject.IsInstanceValid(pile))
-        {
-            return;
-        }
-
-        CardPile? current = Peek(pile, "_pile") as CardPile;
-        PileType type = current?.Type ?? PileType.Discard;
-        CardPile next;
-
-        try
-        {
-            next = type.GetPile(player);
-        }
-        catch
-        {
-            return;
-        }
-
-        if (current == next)
-        {
-            return;
-        }
-
-        MethodInfo? onAdd = Method(pile.GetType(), "AddCard");
-        MethodInfo? onRemove = Method(typeof(NCombatCardPile), "RemoveCard");
-
-        Delegate? addHandler = null;
-        Delegate? removeHandler = null;
-
-        EventArgsPair(ref addHandler, ref removeHandler, pile, current, onAdd, onRemove);
-
-        // Unbind from the old pile.
-        EventInfo? evtAdd = typeof(CardPile).GetEvent("CardAddFinished");
-        EventInfo? evtRemove = typeof(CardPile).GetEvent("CardRemoveFinished");
-
-        if (current != null)
-        {
-            if (evtAdd != null && addHandler != null) evtAdd.RemoveEventHandler(current, addHandler);
-            if (evtRemove != null && removeHandler != null) evtRemove.RemoveEventHandler(current, removeHandler);
-        }
-
-        Set(pile, "_pile", next);
-
-        if (evtAdd != null && addHandler != null) evtAdd.AddEventHandler(next, addHandler);
-        if (evtRemove != null && removeHandler != null) evtRemove.AddEventHandler(next, removeHandler);
-
-        Set(pile, "_currentCount", next.Cards.Count);
-        if (Peek(pile, "_countLabel") is MegaLabel label)
-        {
-            label.SetTextAutoSize(next.Cards.Count.ToString());
-        }
-
-        ModEntry.Log.Info(
-            $"[{ModEntry.ModId}] pile {type} -> netId={player.NetId} ({next.Cards.Count} cards)");
-    }
-
-    private static void EventArgsPair(
-        ref Delegate? addHandler,
-        ref Delegate? removeHandler,
-        NCombatCardPile pile,
-        CardPile? current,
-        MethodInfo? onAdd,
-        MethodInfo? onRemove)
-    {
-        try
-        {
-            EventInfo? evtAdd = typeof(CardPile).GetEvent("CardAddFinished");
-            EventInfo? evtRemove = typeof(CardPile).GetEvent("CardRemoveFinished");
-            if (evtAdd == null || evtRemove == null || onAdd == null || onRemove == null)
-            {
-                return;
-            }
-
-            addHandler = Delegate.CreateDelegate(evtAdd.EventHandlerType!, pile, onAdd);
-            removeHandler = Delegate.CreateDelegate(evtRemove.EventHandlerType!, pile, onRemove);
-        }
-        catch
-        {
-            addHandler = null;
-            removeHandler = null;
-        }
-    }
-
-    private static void SyncPileCount(NCombatCardPile? pile, int count)
-    {
-        if (pile == null || !GodotObject.IsInstanceValid(pile))
-        {
-            return;
-        }
-
-        if (Read<int>(pile, "_currentCount") == count)
-        {
-            return;
-        }
-
-        Set(pile, "_currentCount", count);
-
-        if (Peek(pile, "_countLabel") is MegaLabel label)
-        {
-            label.SetTextAutoSize(count.ToString());
-        }
-    }
-
     private static void RebuildRelics()
     {
         Step("relics", () =>
@@ -357,9 +252,9 @@ internal static class SpectateUi
             {
                 if (Find<NCombatPilesContainer>(ui, "_combatPilesContainer") is { } piles)
                 {
-                    RebindPileButton(piles.DrawPile, shown);
-                    RebindPileButton(piles.DiscardPile, shown);
-                    RebindPileButton(piles.ExhaustPile, shown);
+                    CombatWidgetRebind.PileButton(piles.DrawPile, shown);
+                    CombatWidgetRebind.PileButton(piles.DiscardPile, shown);
+                    CombatWidgetRebind.PileButton(piles.ExhaustPile, shown);
                 }
             });
 
@@ -371,110 +266,8 @@ internal static class SpectateUi
                 }
             });
 
-            Step("energy", () => RebuildEnergyCounter(shown));
+            Step("energy", () => CombatWidgetRebind.RebuildEnergy(ui, shown));
         });
-    }
-
-    private static void RebuildEnergyCounter(Player shown)
-    {
-        NCombatUi? ui = CombatUi;
-        if (ui == null)
-        {
-            return;
-        }
-
-        NEnergyCounter? current = Find<NEnergyCounter>(ui, "_energyCounter");
-        if (current == null || !GodotObject.IsInstanceValid(current))
-        {
-            // No orb yet (not in combat). The Activate patch will build it correctly.
-            return;
-        }
-
-        // Rebuild when the character uses a different orb scene, otherwise just re-point it.
-        string? wanted = SafePath(shown);
-        string? actual = SafePath(Read<Player?>(current, "_player"));
-        if (wanted == actual)
-        {
-            RebindEnergyCounter(current, shown);
-            return;
-        }
-
-        NEnergyCounter? fresh = NEnergyCounter.Create(shown);
-        if (fresh == null)
-        {
-            RebindEnergyCounter(current, shown);
-            return;
-        }
-
-        Node? container = ui.EnergyCounterContainer;
-        if (container == null)
-        {
-            fresh.QueueFree();
-            return;
-        }
-
-        container.AddChild(fresh);
-        if (Find<NStarCounter>(ui, "_starCounter") is { } stars && GodotObject.IsInstanceValid(stars))
-        {
-            stars.Reparent(fresh, true);
-        }
-
-        Set(ui, "_energyCounter", fresh);
-        current.QueueFree();
-    }
-
-    /// <summary>
-    /// Re-points an existing orb: detach the old EnergyChanged handler, swap the
-    /// player, attach the new handler and force a label refresh. Without this the
-    /// number keeps showing the previously spectated player's energy.
-    /// </summary>
-    private static void RebindEnergyCounter(NEnergyCounter counter, Player player)
-    {
-        if (EnergyChangedEvent == null)
-        {
-            Set(counter, "_player", player);
-            InvokeMethod(counter, "RefreshLabel");
-            return;
-        }
-
-        Player? previous = Read<Player?>(counter, "_player");
-        Action<int, int>? handler = CreateEnergyHandler(counter);
-        if (handler != null && previous?.PlayerCombatState is { } oldState)
-        {
-            EnergyChangedEvent.RemoveEventHandler(oldState, handler);
-        }
-
-        Set(counter, "_player", player);
-
-        if (handler != null && player.PlayerCombatState is { } newState)
-        {
-            EnergyChangedEvent.AddEventHandler(newState, handler);
-        }
-
-        InvokeMethod(counter, "RefreshLabel");
-    }
-
-    private static readonly EventInfo? EnergyChangedEvent =
-        typeof(PlayerCombatState).GetEvent("EnergyChanged");
-
-    private static Action<int, int>? CreateEnergyHandler(NEnergyCounter counter)
-    {
-        try
-        {
-            MethodInfo? method = typeof(NEnergyCounter).GetMethod(
-                "OnEnergyChanged",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-            if (method == null)
-            {
-                return null;
-            }
-
-            return (Action<int, int>?)Delegate.CreateDelegate(typeof(Action<int, int>), counter, method);
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     /// <summary>
@@ -640,9 +433,9 @@ internal static class SpectateUi
                 return;
             }
 
-            SyncPileCount(piles.DrawPile, state.DrawPile.Cards.Count);
-            SyncPileCount(piles.DiscardPile, state.DiscardPile.Cards.Count);
-            SyncPileCount(piles.ExhaustPile, state.ExhaustPile.Cards.Count);
+            CombatWidgetRebind.SyncPileCount(piles.DrawPile, state.DrawPile.Cards.Count);
+            CombatWidgetRebind.SyncPileCount(piles.DiscardPile, state.DiscardPile.Cards.Count);
+            CombatWidgetRebind.SyncPileCount(piles.ExhaustPile, state.ExhaustPile.Cards.Count);
         });
     }
 
@@ -650,18 +443,6 @@ internal static class SpectateUi
     /// Restores exactly what was captured — never assumes "true". Turning a node's
     /// input processing back on when it never had it breaks target selection.
     /// </summary>
-    private static string? SafePath(Player? player)
-    {
-        try
-        {
-            return player?.Character?.EnergyCounterPath;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     // ---- vanilla-node clearing (private members; each step is guarded) ----
 
     // ---- tiny reflection helpers ----
