@@ -40,12 +40,7 @@ internal static class HandMirror
     // 单张的补间时长由 AppendPileLerpTween 决定：正常模式 0.25 秒、
     // 快速模式 0.1 秒、即时模式 0.01 秒。
     private const float SpawnStaggerSeconds = 0.22f;
-    // 与原版 NCard.AnimCardToPlayPile 一致：0.2s、缩放到 0.8
-    private const float PickUpSeconds = 0.08f;
-    private const float PickUpLift = 40f;
-    private const float PlayToPileSeconds = 0.2f;
-    private const float PlayHoldSeconds = 0.18f;
-    private const float PlaySettleSeconds = 0.22f;
+
 
     private static readonly List<NHandCardHolder> Holders = new();
 

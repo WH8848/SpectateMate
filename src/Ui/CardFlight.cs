@@ -28,8 +28,6 @@ namespace SpectateMate.Ui;
 /// </summary>
 public static class CardFlight
 {
-    private const float PickUpSeconds = 0.06f;
-    private const float PickUpLift = 16f;
     private const float PlayToPileSeconds = 0.2f;
 
     private sealed class SettlingCard
@@ -130,20 +128,17 @@ public static class CardFlight
             }
 
             Vector2 playTarget = PlayTargetGlobal(card);
-            Vector2 pickedUp = card.GlobalPosition + Vector2.Up * PickUpLift;
 
             Tween tween = card.CreateTween();
 
-            // 轻微的「拿起」感。
+            // 直接飞向播放区，不做任何「拿起」预动作。
             //
-            // 原版是真实拖拽：按住时卡片跟着鼠标抬高到 1.15 倍，松手那一刻
-            // 它已经是放大状态，所以直接飞走毫无突兀。
-            // 这里拿不到拖拽过程，如果照样先放大再缩到 0.8，0.08 秒内一胀一缩，
-            // 看起来就是「蹲起一下」。所以只保留很小幅度的上抬，不做缩放。
-            tween.TweenProperty(card, "global_position", pickedUp, PickUpSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.Out);
-
+            // 原版那一下是真实拖拽的产物：按住时卡片跟随鼠标并放大到 1.15 倍，
+            // 松手那一刻它已经处在放大状态，于是接管过去直接飞走。
+            // 拖拽过程不进网络，我们拿不到，任何模拟都会露出破绽
+            // （之前那版先胀一下再缩回去，看起来像蹲起）。
+            // 与其模拟得不像，不如让这一张直接从扇形位置起飞。
+            //
             // 复刻 NCard.AnimCardToPlayPile：飞到播放区、缩放到 0.8、0.2 秒、不淡出。
             tween.TweenProperty(card, "global_position", playTarget, PlayToPileSeconds)
                 .SetTrans(Tween.TransitionType.Cubic)
