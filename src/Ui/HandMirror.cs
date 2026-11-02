@@ -661,6 +661,33 @@ internal static class HandMirror
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] layout: count={Holders.Count} focus={focusIdx} " +
                 $"cards=[{ids}]");
+
+            // 逐个打印位置，用来判断错乱是「holder 数量不对」还是「某几张没跟上」。
+            var positions = new System.Text.StringBuilder();
+
+            for (int i = 0; i < Holders.Count; i++)
+            {
+                NHandCardHolder h = Holders[i];
+
+                if (h == null || !GodotObject.IsInstanceValid(h))
+                {
+                    positions.Append('#').Append(i).Append("=INVALID; ");
+                    continue;
+                }
+
+                positions.Append('#').Append(i)
+                    .Append(" pos=").Append(h.Position)
+                    .Append(" tgt=").Append(h.TargetPosition)
+                    .Append("; ");
+            }
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] positions: {positions}");
+
+            // ActiveHolders 实际返回什么，RefreshLayout 就用什么算间距。
+            var active = hand.ActiveHolders;
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] activeHolders={active.Count} " +
+                $"(mirror={Holders.Count})");
         }
         catch
         {
