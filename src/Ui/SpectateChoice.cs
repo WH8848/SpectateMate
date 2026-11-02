@@ -169,7 +169,8 @@ public static class SpectateChoice
         }
         else
         {
-            Close();
+            // 他已经不在选牌了：连状态一起清掉，避免界面反复重建。
+            Close(clearMode: true);
         }
 
         SyncHandSelection(target, screenType);
@@ -418,8 +419,17 @@ public static class SpectateChoice
         }
     }
 
-    /// <summary>关闭只读界面。重复调用安全。</summary>
-    public static void Close()
+    /// <summary>
+    /// 关闭只读界面。重复调用安全。
+    ///
+    /// clearMode 用来区分两种「关闭」：
+    ///   true  —— 他那边这次选择已经结束了（Tick 判定不该再显示），
+    ///            必须连 _mode 一起清掉。否则下一拍 shouldShow 仍然成立，
+    ///            Show() 发现 _screen 为空又重建一个，界面就会无限重建，
+    ///            表现出来就是「卡在选卡页面」。
+    ///   false —— 只是退出观战，_mode 要保留，重新观战才能立刻再看到。
+    /// </summary>
+    public static void Close(bool clearMode = false)
     {
         try
         {
@@ -435,6 +445,15 @@ public static class SpectateChoice
 
         _screen = null;
         _hoverId = null;
+
+        if (clearMode)
+        {
+            _mode = Mode.None;
+            _cards = null;
+            _pile = null;
+            _prefs = null;
+            _filter = null;
+        }
     }
 
     /// <summary>
@@ -443,7 +462,7 @@ public static class SpectateChoice
     /// </summary>
     public static void Reset()
     {
-        Close();
+        Close(clearMode: false);
         HandMirror.ResetSelectionUi();
         HandMirror.ClearHandSelection();
     }
