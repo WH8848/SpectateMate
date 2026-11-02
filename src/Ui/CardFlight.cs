@@ -316,7 +316,7 @@ public static class CardFlight
                 item.Card,
                 pile,
                 isAddingToPile: true,
-                TrailPath(owner));
+                TrailPath(owner) ?? string.Empty);
 
             if (vfx == null)
             {
@@ -483,7 +483,7 @@ public static class CardFlight
                 card,
                 pile,
                 isAddingToPile: true,
-                TrailPath(owner));
+                TrailPath(owner) ?? string.Empty);
 
             if (vfx == null)
             {

@@ -135,10 +135,39 @@ internal static class HandMirror
             // 连续 4 拍（约 0.2 秒）位置完全不变，说明位移停了但没到位。
             if (StuckTicks[index] == 4)
             {
+                int active = -1;
+
+                try
+                {
+                    active = _lastHand != null && GodotObject.IsInstanceValid(_lastHand)
+                        ? _lastHand.ActiveHolders.Count
+                        : -1;
+                }
+                catch
+                {
+                    active = -1;
+                }
+
                 ModEntry.Log.Warn(
                     $"[{ModEntry.ModId}] STUCK #{index}: pos={pos} expect={expect} " +
-                    $"tgt={holder.TargetPosition} count={Holders.Count} " +
+                    $"tgt={holder.TargetPosition} count={Holders.Count} active={active} " +
                     $"visible={holder.Visible} mod={holder.Modulate}");
+
+                // 目标值和期望值不一致，说明上一次排版用的是别的张数。
+                // 立刻按当前镜像列表重排一次。
+                try
+                {
+                    if (_lastHand != null && GodotObject.IsInstanceValid(_lastHand))
+                    {
+                        _lastHand.ForceRefreshCardIndices();
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                StuckTicks[index] = 0;
             }
         }
         catch
