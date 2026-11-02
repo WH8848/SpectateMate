@@ -544,9 +544,17 @@ internal static class HandMirror
                     $"[{ModEntry.ModId}] hand -> PLAY: {played.CardNode?.Model?.Id.Entry}");
                 CardFlight.AnimatePlayedCard(played, _layer);
             }
+            else if (destination == PileType.Exhaust)
+            {
+                // 虚无、回合结束消耗：原版会在被隐藏的原生卡上播碎裂，
+                // 观战者看不到，这里在镜像卡上补一份。
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] hand -> Exhaust: {played.CardNode?.Model?.Id.Entry}");
+                CardFlight.PlayExhaustFromHand(played);
+            }
             else
             {
-                // 不是出牌：直接回收空壳，让原版动画负责后续表现。
+                // 其余（弃手牌等）：直接回收空壳，表现交给原版。
                 ModEntry.Log.Info(
                     $"[{ModEntry.ModId}] hand -> {destination?.ToString() ?? "?"}: " +
                     $"{played.CardNode?.Model?.Id.Entry}");

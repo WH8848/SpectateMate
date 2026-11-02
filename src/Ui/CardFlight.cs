@@ -348,6 +348,50 @@ public static class CardFlight
     }
 
     /// <summary>
+    /// 从手牌直接消耗（虚无、回合结束消耗）时播的碎裂特效。
+    ///
+    /// 原版走 CardPileCmd 的 Exhaust 分支，用 NCardExhaustQuickVfx；
+    /// 但它取的是 NCard.FindOnTable(model)，找到的是被我们藏起来的那张原生卡，
+    /// 特效在看不见的地方播完，观战者什么也看不到。
+    /// 所以这里在镜像卡上补一份同样的特效。
+    /// </summary>
+    public static void PlayExhaustFromHand(NHandCardHolder? holder)
+    {
+        try
+        {
+            NCard? card = holder?.CardNode;
+            if (holder == null || card == null || !GodotObject.IsInstanceValid(card))
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            Detached.Remove(holder);
+
+            NCardExhaustQuickVfx? vfx = NCardExhaustQuickVfx.Create(card);
+            if (vfx == null)
+            {
+                DestroyHolder(holder);
+                return;
+            }
+
+            NCombatRoom.Instance?.Ui?.AddChildSafely(vfx);
+            TaskHelper.RunSafely(vfx.PlayAnimation());
+
+            // 卡片已交给特效，holder 只是空壳。
+            if (GodotObject.IsInstanceValid(holder))
+            {
+                holder.QueueFree();
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand exhaust vfx failed: {e.Message}");
+            DestroyHolder(holder);
+        }
+    }
+
+    /// <summary>
     /// 原地播消耗特效：Create 会把卡片从当前父节点摘走并塞进特效内部，
     /// 之后由 PlayAnimation 接管销毁，所以这里不能再去回收卡片。
     /// </summary>
