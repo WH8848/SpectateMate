@@ -78,22 +78,8 @@ internal static class ShuffleTrailFix
     /// player 和 list 里的牌都应该属于被洗牌的那个人。如果两者不一致，
     /// 说明问题出在 Owner 上，而不是特效那一层。
     /// </summary>
-    /// <summary>
-    /// 当前正在洗牌的玩家。Create 拿不到 player 参数，只能靠这个关联。
-    /// </summary>
-    private static ulong? _shuffleNetId;
-
     private static void ShufflePrefix(MegaCrit.Sts2.Core.Entities.Players.Player player)
     {
-        try
-        {
-            _shuffleNetId = player.NetId;
-        }
-        catch
-        {
-            _shuffleNetId = null;
-        }
-
         try
         {
             string owner = "?";
@@ -147,7 +133,20 @@ internal static class ShuffleTrailFix
     ///
     /// 所以：观战期间，凡是不是被观战者发起的洗牌，直接不创建特效。
     /// </summary>
-    private static bool Prefix(ref string trailPath, ref NCardFlyShuffleVfx __result)
+    /// <summary>
+    /// 观战时把洗牌光带的贴图强制换成被观战者的。
+    ///
+    /// CharacterModel.TrailPath 就是按角色 Id 拼出来的：
+    ///     "vfx/card_trail_" + Id.Entry.ToLowerInvariant()
+    /// 所以拿到 Target.Character.TrailPath 就等于拿到了正确颜色：
+    ///     IRONCLAD -> 红, SILENT -> 绿, REGENT -> 黄,
+    ///     NECROBINDER -> 紫, DEFECT -> 蓝
+    ///
+    /// 不再判断「这次洗牌是谁发起的」。洗牌是确定性锁步，两端都会执行，
+    /// 屏幕上只会出现一份光效，直接按观战目标取色即可，
+    /// 这样不会因为归属判断出错而漏掉替换。
+    /// </summary>
+    private static bool Prefix(ref string trailPath)
     {
         try
         {
@@ -156,25 +155,20 @@ internal static class ShuffleTrailFix
                 return true;
             }
 
-            ulong? targetId = SpectateOverlay.Target?.NetId;
+            string? wanted = SpectateOverlay.Target?.Character?.TrailPath;
 
-            if (targetId == null || _shuffleNetId != targetId)
+            if (string.IsNullOrEmpty(wanted))
             {
-                // 不是他的洗牌：不播。
-                __result = null!;
-                return false;
+                return true;
             }
 
-            string? wanted = SpectateOverlay.Target!.Character?.TrailPath;
-
-            if (!string.IsNullOrEmpty(wanted) && wanted != trailPath)
+            if (wanted != trailPath)
             {
                 ModEntry.Log.Info(
                     $"[{ModEntry.ModId}] shuffle trail: {trailPath} -> {wanted}");
-
-                trailPath = wanted!;
             }
 
+            trailPath = wanted!;
             return true;
         }
         catch
