@@ -457,6 +457,12 @@ internal static class HandMirror
                     Vector2 spawnFrom = DrawPileLocal(layer);
                     holder.Position = spawnFrom;
 
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] spawn card #{i}: from={spawnFrom} to={target} " +
+                        $"dist={(spawnFrom - target).Length():F0} " +
+                        $"drawGlobal={DrawPileGlobal()} layer={layer.Position}/{layer.Size} " +
+                        $"layerGlobal={layer.GlobalPosition}");
+
                     float delay = spawnOrder * SpawnStaggerSeconds;
                     spawnOrder++;
 
@@ -535,6 +541,24 @@ internal static class HandMirror
         catch
         {
             return layer.Size * 0.5f;
+        }
+    }
+
+    /// <summary>诊断用：把抽牌堆的全局位置也打出来，便于核对坐标换算。</summary>
+    private static Vector2 DrawPileGlobal()
+    {
+        try
+        {
+            if (NCombatRoom.Instance?.Ui?.DrawPile is not { } draw)
+            {
+                return Vector2.Zero;
+            }
+
+            return draw.GlobalPosition + draw.Size * 0.5f;
+        }
+        catch
+        {
+            return Vector2.Zero;
         }
     }
 
