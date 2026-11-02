@@ -135,6 +135,19 @@ internal static class ShuffleTrailFix
     {
         try
         {
+            // 无条件记录一次，这样能看清原版到底传了什么进来。
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] shuffle vfx: shufflePlayer={_shuffleNetId.ToString() ?? "null"} " +
+                $"target={SpectateOverlay.Target?.NetId.ToString() ?? "null"} " +
+                $"open={SpectateOverlay.IsOpen} trail={trailPath}");
+        }
+        catch
+        {
+            // ignored
+        }
+
+        try
+        {
             if (!SpectateOverlay.IsOpen)
             {
                 return;
