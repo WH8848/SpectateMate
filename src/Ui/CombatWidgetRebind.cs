@@ -25,6 +25,10 @@ internal static class CombatWidgetRebind
     {
         if (pile == null || !GodotObject.IsInstanceValid(pile))
         {
+            // 战斗结束时 NCombatUi 已被销毁，这里会跳过——
+            // 那一刻不重绑是对的，但下一场战斗必须重新绑一次，
+            // 否则按钮还指着上一场的（或队友的）牌堆。
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] pile rebind skipped: pile invalid");
             return;
         }
 
@@ -43,6 +47,7 @@ internal static class CombatWidgetRebind
 
         if (current == next)
         {
+            ModEntry.Log.Info($"[{ModEntry.ModId}] pile {type} already bound to netId={player.NetId}");
             return;
         }
 

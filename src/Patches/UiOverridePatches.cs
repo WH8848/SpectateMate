@@ -72,6 +72,12 @@ internal sealed class CombatUiActivatePatch : IPatchMethod
         {
             SpectateUi.SetInteraction(false);
         }
+
+        // 新战斗的牌堆按钮和能量球都是新节点，必须重新绑一次。
+        // 观战结束在战斗外时，Apply(null) 会因为旧 NCombatUi 已销毁而跳过重绑，
+        // 不在这里补一刀，按钮就会一直指着上一场的牌堆。
+        SpectateUi.ForceReapply();
+        Callable.From(() => SpectateUi.Apply(SpectateOverlay.Target)).CallDeferred();
     }
 
     public static void Finalizer(bool __state)

@@ -138,6 +138,22 @@ internal static class SpectateUi
     private static bool _applied;
     private static ulong? _appliedNetId;
 
+    /// <summary>
+    /// 作废「已经应用过」的标记，让下一次 Apply 无论如何都重新绑一遍。
+    ///
+    /// 新战斗开始时，三个牌堆按钮和能量球都是全新节点，游戏自己 Initialize 到
+    /// 本地玩家。但「观战结束时 Apply(null)」那次重绑很可能因为 NCombatUi 已被
+    /// 销毁而跳过（RebindPileButton 拿不到有效节点）。
+    /// 不清标记的话，Apply(null) 会因为 _appliedNetId 已经是 null 直接短路，
+    /// 导致按钮继续指着上一场的（或队友的）牌堆，
+    /// 表现为「自己打出消耗牌，消耗牌堆不出现」。
+    /// </summary>
+    public static void ForceReapply()
+    {
+        _applied = false;
+        _appliedNetId = null;
+    }
+
     public static void Apply(Player? target)
     {
         ulong? targetId = null;
