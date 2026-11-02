@@ -251,6 +251,25 @@ internal static class HandMirror
             CardFlight.UpdateSettling();
             PruneStaleFocus();
 
+            // 每拍把镜像层的 transform 对齐到原生容器。
+            //
+            // ApplyLayerBounds 只在 EnsureLayer 里跑过一次，之后容器的
+            // Scale / Position 一变（战斗切换、窗口缩放、AnimDisable 下移），
+            // 镜像层就不会跟着动。而 HandPosHelper 给的是容器局部坐标，
+            // 层一旦错位，视觉上就会「几张牌挤在一起、整体偏高」——
+            // 可日志里的坐标数字全是正确的，很难反推。
+            try
+            {
+                if (_layer != null && GodotObject.IsInstanceValid(_layer))
+                {
+                    ApplyLayerBounds(_layer, VanillaHandVisibility.ContainerOf(hand));
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+
             // 每拍检查有没有牌停在错误位置，命中时打印现场。
             try
             {
