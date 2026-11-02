@@ -98,6 +98,18 @@ internal static class HandMirror
     private static readonly System.Reflection.MethodInfo? FocusedHolderSetter =
         FocusedHolderProp?.GetSetMethod(nonPublic: true);
 
+    private static int ReadLastFocusedIdx(NPlayerHand hand)
+    {
+        try
+        {
+            return LastFocusedIdxField?.GetValue(hand) is int idx ? idx : -1;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     private static NHandCardHolder? GetFocused(NPlayerHand hand)
     {
         try
@@ -893,7 +905,16 @@ internal static class HandMirror
                 return;
             }
 
-            if (GetFocused(hand) is not { } focused)
+            // 两个残留源都要查。
+            //
+            // FocusedHolder 为 null 不代表干净：_lastFocusedHolderIdx 可能还留着
+            // 上一次的下标，而 NPlayerHand 有地方会拿它做默认焦点回退。
+            // 之前这里一看到焦点为 null 就返回，那个下标永远不会被清——
+            // 于是某个固定位置（比如中间那张）一直被当成焦点抬着。
+            NHandCardHolder? focused = GetFocused(hand);
+            int lastIdx = ReadLastFocusedIdx(hand);
+
+            if (focused == null && lastIdx < 0)
             {
                 return;
             }
@@ -906,6 +927,17 @@ internal static class HandMirror
             // 鼠标离开整个手牌区才算残留，这时才清。
             try
             {
+                if (focused == null || !GodotObject.IsInstanceValid(focused))
+                {
+                    // 没有焦点对象但有残留下标，直接走清理。
+                    SetFocused(hand, null);
+                    LastFocusedIdxField?.SetValue(hand, -1);
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] cleared stale focus index ({lastIdx})");
+                    hand.ForceRefreshCardIndices();
+                    return;
+                }
+
                 Vector2 mouse = focused.GetViewport().GetMousePosition();
 
                 foreach (NHandCardHolder candidate in Holders)
