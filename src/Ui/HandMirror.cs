@@ -412,6 +412,10 @@ internal static class HandMirror
             else
             {
                 existing.Remove(model);
+
+                // 复用的 holder 可能正停在「等待起飞」的透明状态，
+                // 这里恢复成不透明，避免它一直看不见。
+                holder.Modulate = Colors.White;
             }
 
             if (created)
@@ -433,7 +437,11 @@ internal static class HandMirror
                 holder.SetTargetScale(scale);
 
                 // 逐张错开：第 N 张等 N * 间隔 再起飞。
-                // 起飞前它停在抽牌堆位置，视觉上就是排队等待发牌。
+                //
+                // 等待期间保持透明。它此刻正压在抽牌堆按钮上，如果可见，
+                // 一次抽好几张时就会看到一叠牌堆在牌堆图标上，很像布局错乱。
+                // 用 Modulate 而不是 Visible：后者会把它踢出 ActiveHolders，
+                // 导致布局在它出现前后各重算一次，反而更跳。
                 float delay = spawnOrder * SpawnStaggerSeconds;
                 spawnOrder++;
 
@@ -441,18 +449,24 @@ internal static class HandMirror
 
                 if (delay <= 0f)
                 {
+                    captured.Modulate = Colors.White;
                     captured.SetTargetPosition(target);
                 }
                 else
                 {
+                    captured.Modulate = new Color(1f, 1f, 1f, 0f);
+
                     Tween stagger = captured.CreateTween();
                     stagger.TweenInterval(delay);
                     stagger.TweenCallback(Callable.From(() =>
                     {
-                        if (GodotObject.IsInstanceValid(captured))
+                        if (!GodotObject.IsInstanceValid(captured))
                         {
-                            captured.SetTargetPosition(target);
+                            return;
                         }
+
+                        captured.Modulate = Colors.White;
+                        captured.SetTargetPosition(target);
                     }));
                 }
             }
