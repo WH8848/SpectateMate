@@ -136,7 +136,16 @@ public static class CardFlight
                     DestroyHolder(item.Holder);
                     break;
 
-                // Play / None：他还在选择目标或结算中，停在播放区继续等。
+                case null when IsPower(item.Model):
+                    // 能力卡打出后会彻底消失，Pile 永久变成 None，不进任何牌堆。
+                    // 原版在这条路径上播的是 PlayPowerCardFlyVfx（飞向能力栏），
+                    // 不会回到 Pile 判定。如果不在这里收掉，卡片会永远停在播放区。
+                    Settling.Remove(item);
+                    DestroyHolder(item.Holder);
+                    break;
+
+                // Play：他还在选择目标或结算中，停在播放区继续等。
+                // None 且不是能力卡：可能是中间态，同样再等等。
             }
         }
     }
@@ -344,6 +353,18 @@ public static class CardFlight
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] fly-to-pile vfx failed: {e.Message}");
             DestroyHolder(item.Holder);
+        }
+    }
+
+    private static bool IsPower(CardModel model)
+    {
+        try
+        {
+            return model.Type == CardType.Power;
+        }
+        catch
+        {
+            return false;
         }
     }
 
