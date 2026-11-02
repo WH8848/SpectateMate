@@ -28,8 +28,8 @@ namespace SpectateMate.Ui;
 /// </summary>
 public static class CardFlight
 {
-    private const float PickUpSeconds = 0.08f;
-    private const float PickUpLift = 40f;
+    private const float PickUpSeconds = 0.06f;
+    private const float PickUpLift = 16f;
     private const float PlayToPileSeconds = 0.2f;
 
     private sealed class SettlingCard
@@ -134,12 +134,13 @@ public static class CardFlight
 
             Tween tween = card.CreateTween();
 
-            // 伪「拿起」：原版是真实拖拽，这里用一次轻微上抬+放大代替。
+            // 轻微的「拿起」感。
+            //
+            // 原版是真实拖拽：按住时卡片跟着鼠标抬高到 1.15 倍，松手那一刻
+            // 它已经是放大状态，所以直接飞走毫无突兀。
+            // 这里拿不到拖拽过程，如果照样先放大再缩到 0.8，0.08 秒内一胀一缩，
+            // 看起来就是「蹲起一下」。所以只保留很小幅度的上抬，不做缩放。
             tween.TweenProperty(card, "global_position", pickedUp, PickUpSeconds)
-                .SetTrans(Tween.TransitionType.Cubic)
-                .SetEase(Tween.EaseType.Out);
-            tween.Parallel()
-                .TweenProperty(card, "scale", card.Scale * 1.15f, PickUpSeconds)
                 .SetTrans(Tween.TransitionType.Cubic)
                 .SetEase(Tween.EaseType.Out);
 
