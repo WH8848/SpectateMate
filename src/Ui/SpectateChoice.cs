@@ -124,16 +124,37 @@ public static class SpectateChoice
         {
             EndHandSelection();
         }
+
+        // 覆盖层模式（发现 / 冲锋这类从牌堆选）没有别的结束信号：
+        // 非 owner 分支只是 await 结果，结果送达时就走这里。
+        // 不清掉 _mode 的话界面会一直挂在栈上，把后续操作挡死。
+        if (_owner != null && player.NetId == _owner.NetId && _mode != Mode.None)
+        {
+            _mode = Mode.None;
+            _cards = null;
+            _pile = null;
+            _prefs = null;
+            _filter = null;
+            Close();
+        }
     }
 
     /// <summary>每拍调用：他在选牌就打开只读界面，选完就关掉。</summary>
     public static void Tick(Player? target, NetScreenType screenType)
     {
+        // 不能用 screenType == CardSelection 作为条件。
+        //
+        // 这个枚举只有在「本机自己弹出选择界面」时才会变成 CardSelection。
+        // 观战时他选牌走的是非 owner 分支：FromChooseACardScreen / FromCombatPile
+        // 在那里只是 await WaitForRemoteChoice，压根不会创建界面，
+        // NetScreenType 始终停在 Room。用这个条件等于永远不显示。
+        //
+        // 改为只认「有没有待显示的候选」+「是不是他还活着在战斗」，
+        // 结束信号交给 PlayerChoiceReceived（结果送达时必定触发）。
         bool shouldShow =
             target != null &&
             _owner != null &&
             _owner.NetId == target.NetId &&
-            screenType == NetScreenType.CardSelection &&
             _mode != Mode.None &&
             IsInCombat(_owner);
 
