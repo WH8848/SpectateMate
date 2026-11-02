@@ -45,8 +45,39 @@ internal static class CombatWidgetRebind
             return;
         }
 
+        // 先把委托准备好：下面两个分支都要用它（重新挂事件 / 换绑）。
+        MethodInfo? onAdd = Method(pile.GetType(), "AddCard");
+        MethodInfo? onRemove = Method(typeof(NCombatCardPile), "RemoveCard");
+
+        Delegate? addHandler = null;
+        Delegate? removeHandler = null;
+
+        EventArgsPair(ref addHandler, ref removeHandler, pile, current, onAdd, onRemove);
+
+        EventInfo? evtAdd = typeof(CardPile).GetEvent("CardAddFinished");
+        EventInfo? evtRemove = typeof(CardPile).GetEvent("CardRemoveFinished");
+
         if (current == next)
         {
+            // 即使 _pile 没变，也要重新挂一次事件。
+            //
+            // 观战期间为了别的目标解绑过、或者节点被重建过时，
+            // CardAddFinished 可能已经不在监听列表里了。
+            // 而「再观战一次就恢复正常」正是因为那次 current != next，
+            // 走了下面的完整重绑路径才把事件补回来。
+            // 这里补一刀，保证任何一次 Apply 之后事件都是活的。
+            if (evtAdd != null && addHandler != null)
+            {
+                evtAdd.RemoveEventHandler(next, addHandler);
+                evtAdd.AddEventHandler(next, addHandler);
+            }
+
+            if (evtRemove != null && removeHandler != null)
+            {
+                evtRemove.RemoveEventHandler(next, removeHandler);
+                evtRemove.AddEventHandler(next, removeHandler);
+            }
+
             // 绑定没变，但可见性仍要按当前数量刷新一次。
             //
             // 观战期间 SyncExhaustVisibility 是按被观战者的数量驱动的，
@@ -76,26 +107,6 @@ internal static class CombatWidgetRebind
             return;
         }
 
-        MethodInfo? onAdd = Method(pile.GetType(), "AddCard");
-        MethodInfo? onRemove = Method(typeof(NCombatCardPile), "RemoveCard");
-
-        Delegate? addHandler = null;
-        Delegate? removeHandler = null;
-
-        EventArgsPair(ref addHandler, ref removeHandler, pile, current, onAdd, onRemove);
-
-        if (addHandler == null || removeHandler == null)
-        {
-            // 委托建不起来就绑不上事件，按钮的计数和显示都不会再更新。
-            // 这是一条容易静默失败的路径，必须留痕。
-            ModEntry.Log.Warn(
-                $"[{ModEntry.ModId}] pile {type}: handler build failed " +
-                $"(add={(addHandler != null)} remove={(removeHandler != null)} " +
-                $"onAdd={(onAdd != null)} onRemove={(onRemove != null)})");
-        }
-
-        EventInfo? evtAdd = typeof(CardPile).GetEvent("CardAddFinished");
-        EventInfo? evtRemove = typeof(CardPile).GetEvent("CardRemoveFinished");
 
         if (current != null)
         {
