@@ -348,6 +348,14 @@ internal static class SpectateUi
             {
                 InvokeMethod(hand, "AnimEnable");
             }
+
+            // 关键：观战期间 ActiveHolders 被劫持成镜像列表，RefreshLayout 只摆放
+            // 镜像 holder。这段时间里你自己新抽的牌虽然已经进了 CardHolderContainer，
+            // 却从来没被摆过位置，一直停在创建时的默认坐标（表现为「牌停在抽牌堆上方」）。
+            //
+            // 退出观战时 ActiveHolders 已经交还原生实现，这里强制跑一次布局，
+            // 把那些漏掉的 holder 收拢回扇形。
+            hand.ForceRefreshCardIndices();
         });
     }
 
