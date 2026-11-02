@@ -48,57 +48,11 @@ internal static class HandMirror
     private static Control? _layer;
     private static NPlayerHand? _lastHand;
 
-    private static bool _vanillaHidden;
-    private static Color _savedModulate = Colors.White;
     private static StringName _key = string.Empty;
     private static bool _active;
     private static string _lastDiag = string.Empty;
 
     public static bool IsShowing => _active;
-
-    /// <summary>
-    /// 进战斗时主动把「隐藏原生卡」的状态清干净。
-    ///
-    /// 观战时会把 CardHolderContainer.Modulate 设为 alpha=0；如果退出观战那一刻
-    /// 找不到 hand（回主菜单、切场景），恢复就会静默失败，容器带着 alpha=0 复活，
-    /// 玩家自己的手牌整片透明。而恢复逻辑只挂在 Hide() 里，进战斗时没人调用它，
-    /// 于是只有「再观战一次」才会被动修好。
-    ///
-    /// 这里在战斗 UI 重建时无条件重置，不依赖任何历史状态。
-    /// </summary>
-    public static void ResetVanillaState()
-    {
-        _vanillaHidden = false;
-        _savedModulate = Colors.White;
-
-        try
-        {
-            Control? container = ContainerOf(NCombatRoom.Instance?.Ui?.Hand)
-                ?? ContainerOf(SpectateUi.Hand)
-                ?? ContainerOf(_lastHand);
-
-            // 无条件留痕：这条能确认 ResetVanillaState 到底有没有被执行、
-            // 以及当时的容器状态。每场战斗只会打印一次。
-            ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] reset vanilla state: hand={(NCombatRoom.Instance?.Ui?.Hand != null)} " +
-                $"container={(container != null)} alpha={container?.Modulate.A}");
-
-            if (container == null)
-            {
-                return;
-            }
-
-            if (container.Modulate.A <= 0f)
-            {
-                container.Modulate = Colors.White;
-                ModEntry.Log.Info($"[{ModEntry.ModId}] vanilla hand container was left transparent; restored");
-            }
-        }
-        catch
-        {
-            // ignored
-        }
-    }
 
     /// <summary>
     /// The holders the vanilla layout should position. Empty when not spectating,
@@ -160,8 +114,7 @@ internal static class HandMirror
                     _key = string.Empty;
                     _active = false;
                     _layer = null;
-                    _vanillaHidden = false;
-                    _savedModulate = Colors.White;
+                    VanillaHandVisibility.ForgetState();
                     _hoverId = null;
                     _lastEnergy = int.MinValue;
 
@@ -190,7 +143,7 @@ internal static class HandMirror
                 // key 相同也要保持隐藏：队友手牌为 0 时 key 是空串，而 Close()
                 // 也会把 _key 清成空串 —— 之前 _active 为 false 就整段跳过了，
                 // 导致重进观战直接露出本地手牌。
-                HideVanillaNodes(hand);
+                VanillaHandVisibility.Hide(hand);
                 _active = true;
             }
         }
@@ -282,7 +235,7 @@ internal static class HandMirror
     /// </summary>
     public static void ForceHide()
     {
-        if (!_active && !_vanillaHidden)
+        if (!_active && !VanillaHandVisibility.IsHidden)
         {
             return;
         }
@@ -382,12 +335,12 @@ internal static class HandMirror
             {
                 if (restoreVanilla)
                 {
-                    ShowVanillaNodes(hand);
+                    VanillaHandVisibility.Show(hand);
                 }
                 else
                 {
                     // Still spectating: make sure nothing leaks back on screen.
-                    HideVanillaNodes(hand);
+                    VanillaHandVisibility.Hide(hand);
                 }
             }
         }
@@ -410,7 +363,7 @@ internal static class HandMirror
 
     private static void Rebuild(NPlayerHand hand, IReadOnlyList<CardModel> cards, StringName key)
     {
-        HideVanillaNodes(hand);
+        VanillaHandVisibility.Hide(hand);
 
         Control layer = EnsureLayer(hand);
         int count = Math.Min(cards.Count, 10);
@@ -471,9 +424,9 @@ internal static class HandMirror
 
         // 必须在 ForceRefreshCardIndices 之后执行：_active 为 false 的瞬间
         // RefreshLayout 会把原生编号写回来。
-        HideVanillaLabels();
+        VanillaHandVisibility.HideLabels(_lastHand);
 
-        Control? ctr = ContainerOf(hand);
+        Control? ctr = VanillaHandVisibility.ContainerOf(hand);
         Diag(
             $"showing {Holders.Count} cards | ctrMod={ctr?.Modulate} " +
             $"ctrKids={ctr?.GetChildCount()} | labels={DescribeIndexLabels()}");
@@ -563,7 +516,7 @@ internal static class HandMirror
         // HandPosHelper coordinates are expressed in CardHolderContainer space.
         // Hosting the mirror layer under NPlayerHand put its origin at the bottom
         // strip instead, which threw every card into the top-left corner.
-        Control? container = ContainerOf(hand);
+        Control? container = VanillaHandVisibility.ContainerOf(hand);
 
         // Host the mirror under NPlayerHand, NOT under CardHolderContainer:
         // that container gets its Modulate zeroed to hide the vanilla cards, and
@@ -645,85 +598,6 @@ internal static class HandMirror
         Holders.Clear();
     }
 
-    /// <summary>
-    /// 把原生 holder 的编号标签强制隐藏。
-    ///
-    /// 容器虽然被 Modulate 调到 alpha=0，但只要有任何一处让某个 holder 的
-    /// Modulate 被单独覆盖，标签就会露出来，表现为手牌上方多出一个编号。
-    /// SetIndexLabel(0) 会同时把文字设空并把 Visible 置 false，比依赖父级调制更可靠。
-    /// 本地玩家每次抽牌都会新建 holder，所以这个方法需要每拍调用（幂等且便宜）。
-    /// </summary>
-    public static void HideVanillaLabels()
-    {
-        try
-        {
-            NPlayerHand? hand = _lastHand;
-            if (hand == null || !GodotObject.IsInstanceValid(hand))
-            {
-                return;
-            }
-
-            Control? container = ContainerOf(hand);
-            if (container == null)
-            {
-                return;
-            }
-
-            foreach (Node child in container.GetChildren())
-            {
-                if (child is NHandCardHolder holder && GodotObject.IsInstanceValid(holder))
-                {
-                    holder.SetIndexLabel(0);
-                }
-            }
-        }
-        catch
-        {
-            // ignored
-        }
-    }
-
-    private static void HideVanillaNodes(NPlayerHand hand)
-    {
-        Control? container = ContainerOf(hand);
-        if (container == null)
-        {
-            return;
-        }
-
-        if (!_vanillaHidden || _savedModulate.A <= 0f)
-        {
-            // 防御：万一保存时容器已经是透明的，恢复时会把它永远留在 0。
-            _savedModulate = container.Modulate.A > 0f ? container.Modulate : Colors.White;
-            _vanillaHidden = true;
-        }
-
-        // Container-level transparency beats per-node hiding: holders the game
-        // creates for a brand-new turn are invisible too, with zero bookkeeping.
-        container.Modulate = new Color(_savedModulate.R, _savedModulate.G, _savedModulate.B, 0f);
-    }
-
-    private static void ShowVanillaNodes(NPlayerHand? hand)
-    {
-        // hand 可能已经失效（回主菜单、换场景），必须逐级回退，
-        // 否则容器保持 alpha=0，玩家自己重新进战斗时会看不到手牌。
-        Control? container = ContainerOf(hand)
-            ?? ContainerOf(_lastHand)
-            ?? ContainerOf(SpectateUi.Hand)
-            ?? ContainerOf(NCombatRoom.Instance?.Ui?.Hand);
-
-        if (container == null)
-        {
-            return;
-        }
-
-        if (_vanillaHidden)
-        {
-            container.Modulate = _savedModulate;
-            _vanillaHidden = false;
-        }
-    }
-
     private static void OnHolderFocused(NHandCardHolder holder)
     {
         NPlayerHand? hand = _lastHand;
@@ -752,73 +626,6 @@ internal static class HandMirror
         FocusedHolderField?.SetValue(hand, null);
         LastFocusedIdxField?.SetValue(hand, -1);
         hand.ForceRefreshCardIndices();
-    }
-
-    private static Control? ContainerOf(NPlayerHand? hand)
-    {
-        try
-        {
-            return hand != null && GodotObject.IsInstanceValid(hand) ? hand.CardHolderContainer : null;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// ActiveHolders filters on IsVisibleInTree(), so a holder created moments ago
-    /// (new turn draw) is absent from it and would keep its card face on screen.
-    /// Walk the raw children instead.
-    /// </summary>
-    private static IEnumerable<NHandCardHolder> AllVanillaHolders(NPlayerHand hand)
-    {
-        Control? container = null;
-
-        try
-        {
-            container = hand.CardHolderContainer;
-        }
-        catch
-        {
-            // ignored
-        }
-
-        if (container == null || !GodotObject.IsInstanceValid(container))
-        {
-            return hand.ActiveHolders;
-        }
-
-        var holders = new List<NHandCardHolder>();
-        foreach (Node child in container.GetChildren())
-        {
-            if (child is NHandCardHolder holder)
-            {
-                holders.Add(holder);
-            }
-        }
-
-        return holders;
-    }
-
-    private static void RestoreHolder(NHandCardHolder holder)
-    {
-        try
-        {
-            if (holder == null || !GodotObject.IsInstanceValid(holder))
-            {
-                return;
-            }
-
-            if (holder.CardNode is { } node && GodotObject.IsInstanceValid(node))
-            {
-                node.Visible = true;
-            }
-        }
-        catch
-        {
-            // holder may have been freed
-        }
     }
 
     private static StringName BuildKey(IReadOnlyList<CardModel> cards)

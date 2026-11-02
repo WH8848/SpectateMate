@@ -368,7 +368,7 @@ public static class SpectateOverlay
 
                 try
                 {
-                    HandMirror.HideVanillaLabels();
+                    VanillaHandVisibility.HideLabels(SpectateUi.Hand);
                 }
                 catch (Exception e)
                 {

@@ -65,7 +65,7 @@ internal sealed class CombatUiActivatePatch : IPatchMethod
         // 这里无条件重置，不依赖 Hide() 是否成功执行过。
         // 延后一帧：Activate 阶段 NPlayerHand 可能还没挂到 NCombatUi 上，
         // 立即执行会找不到容器而直接返回。
-        Callable.From(HandMirror.ResetVanillaState).CallDeferred();
+        Callable.From(VanillaHandVisibility.Reset).CallDeferred();
 
         // 观战可能在战斗外就打开了，这里补一次输入屏蔽。
         if (DisplayedPlayer.IsActive)
