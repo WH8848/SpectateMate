@@ -31,7 +31,11 @@ namespace SpectateMate.Ui;
 /// </summary>
 public static class SpectateOverlay
 {
-    private const float RefreshSeconds = 0.15f;
+    // 心跳周期：远端玩家的数据不会发事件，只能定期拉。
+    // 0.05 秒意味着最坏滞后 50ms，肉眼基本无法察觉；
+    // 每次心跳的工作量很小（比对手牌、约 20 次反射读字段），
+    // 即使 20 次/秒也只有不到 1% 的单核占用。
+    private const float RefreshSeconds = 0.05f;
     private const ulong ToggleDebounceMs = 150;
 
     private static ulong _lastToggleMs;
