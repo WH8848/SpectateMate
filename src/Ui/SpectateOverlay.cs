@@ -251,12 +251,18 @@ public static class SpectateOverlay
     {
         if (!IsOpen)
         {
+            SpectateChoice.ResetAll();
             return;
         }
 
         // 战斗结束就退出观战：战斗状态已经失效，继续留在观战画面只会显示陈旧数据，
         // 表现为「页面卡住」。只关窗口不清登记，头像还能再次右键进入。
         Close();
+
+        // 手动的 Close 会保留选牌候选（方便退出再进立刻看到），
+        // 但战斗结束必须彻底清空：否则进入卡牌奖励时会被误判成「他在选牌」，
+        // 弹出一个空的全透明覆盖层把奖励界面挡住。
+        SpectateChoice.ResetAll();
     }
 
     private static Label AddLabel(Container parent, int fontSize, Color color)

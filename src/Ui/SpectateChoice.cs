@@ -134,7 +134,8 @@ public static class SpectateChoice
             _owner != null &&
             _owner.NetId == target.NetId &&
             screenType == NetScreenType.CardSelection &&
-            _mode != Mode.None;
+            _mode != Mode.None &&
+            IsInCombat(_owner);
 
         if (shouldShow)
         {
@@ -183,6 +184,39 @@ public static class SpectateChoice
             HandMirror.ClearHandSelection();
             _handVisualActive = false;
         }
+    }
+
+    /// <summary>
+    /// 战斗选牌的候选只在战斗中有意义。
+    ///
+    /// 战斗结束后 _owner.PlayerCombatState 变成 null，而 _mode 和候选还留着，
+    /// 一旦他把选牌界面关掉、进入卡牌奖励，就会被误判成「他在选牌」，
+    /// 于是一个空的全透明覆盖层被压到 NOverlayStack 栈顶，把奖励界面挡住，
+    /// 表现为「卡牌奖励选不了」。
+    /// </summary>
+    private static bool IsInCombat(Player player)
+    {
+        try
+        {
+            return player.PlayerCombatState != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>战斗结束时清空全部选牌状态。</summary>
+    public static void ResetAll()
+    {
+        Close();
+
+        _mode = Mode.None;
+        _cards = null;
+        _pile = null;
+        _prefs = null;
+        _filter = null;
+        _owner = null;
     }
 
     private static void Show()
