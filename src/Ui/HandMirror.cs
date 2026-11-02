@@ -98,6 +98,55 @@ internal static class HandMirror
     private static readonly System.Reflection.MethodInfo? FocusedHolderSetter =
         FocusedHolderProp?.GetSetMethod(nonPublic: true);
 
+    // 卡住检测：位置明显偏离期望、且连续几拍不再变化，就把现场打出来。
+    private static readonly Vector2[] LastPositions = new Vector2[16];
+    private static readonly int[] StuckTicks = new int[16];
+
+    private static void DetectStuck(int index, NHandCardHolder holder, Vector2 expect)
+    {
+        try
+        {
+            if (index < 0 || index >= LastPositions.Length)
+            {
+                return;
+            }
+
+            Vector2 pos = holder.Position;
+            bool off = (pos - expect).Length() > 80f;
+
+            if (!off)
+            {
+                StuckTicks[index] = 0;
+                LastPositions[index] = pos;
+                return;
+            }
+
+            if (LastPositions[index] == pos)
+            {
+                StuckTicks[index]++;
+            }
+            else
+            {
+                StuckTicks[index] = 0;
+            }
+
+            LastPositions[index] = pos;
+
+            // 连续 4 拍（约 0.2 秒）位置完全不变，说明位移停了但没到位。
+            if (StuckTicks[index] == 4)
+            {
+                ModEntry.Log.Warn(
+                    $"[{ModEntry.ModId}] STUCK #{index}: pos={pos} expect={expect} " +
+                    $"tgt={holder.TargetPosition} count={Holders.Count} " +
+                    $"visible={holder.Visible} mod={holder.Modulate}");
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static int ReadLastFocusedIdx(NPlayerHand hand)
     {
         try
@@ -201,6 +250,26 @@ internal static class HandMirror
 
             CardFlight.UpdateSettling();
             PruneStaleFocus();
+
+            // 每拍检查有没有牌停在错误位置，命中时打印现场。
+            try
+            {
+                for (int i = 0; i < Holders.Count; i++)
+                {
+                    NHandCardHolder h = Holders[i];
+
+                    if (h == null || !GodotObject.IsInstanceValid(h))
+                    {
+                        continue;
+                    }
+
+                    DetectStuck(i, h, HandPosHelper.GetPosition(Holders.Count, i));
+                }
+            }
+            catch
+            {
+                // ignored
+            }
 
             StringName key = BuildKey(cards);
             if (key != _key)
