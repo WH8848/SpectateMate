@@ -98,6 +98,8 @@ internal static class SpectateUi
     /// unreachable across turn/combat boundaries, and losing it used to silently
     /// disable the whole hand mirror.
     /// </summary>
+    public static NGlobalUi? GlobalUi => _globalUi;
+
     public static NPlayerHand? Hand
     {
         get
@@ -127,7 +129,7 @@ internal static class SpectateUi
         _localPlayer = null;
         _applied = false;
         _appliedNetId = null;
-        SavedStates.Clear();
+        InteractionBlocker.Clear();
     }
 
     /// <summary>Points the vanilla UI at <paramref name="target"/> (null = back to local).</summary>
@@ -476,130 +478,11 @@ internal static class SpectateUi
     }
 
     /// <summary>
-    /// Blocks (or restores) local interaction while spectating.
-    /// Only the HAND AREA and the END TURN button are blocked — piles, relics and
-    /// potions stay clickable so the teammate's piles can be inspected.
+    /// 观战期间屏蔽本地交互。实现见 InteractionBlocker。
     /// </summary>
     public static void SetInteraction(bool enabled)
     {
-        if (enabled)
-        {
-            FreeHandBlocker();
-            RestoreInteraction();
-            return;
-        }
-
-        // 不再使用遮挡层：它会吃掉 hover，并把自己的 z 序压到提示框之上。
-        // 出牌由 HandPlayBlockPatch（StartCardPlay prefix）从代码层拦死。
-        Step("hand-keys", () => BlockInputFlags(Hand));
-        Step("end-turn", () => Block(_combatUi?.EndTurnButton));
-        Step("potions", () => Block(_globalUi?.TopBar?.PotionContainer));
-    }
-
-    private static Control? _handBlocker;
-
-    private static void InstallHandBlocker()
-    {
-        NPlayerHand? hand = Hand;
-        if (hand == null || !GodotObject.IsInstanceValid(hand))
-        {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] hand blocker skipped: hand unavailable");
-            return;
-        }
-
-        if (_handBlocker != null && GodotObject.IsInstanceValid(_handBlocker))
-        {
-            return;
-        }
-
-        // Must live in CardHolderContainer space: NPlayerHand itself is only a thin
-        // bottom strip, so a full-rect blocker there left the fan clickable.
-        Control? container = null;
-        try
-        {
-            container = hand.CardHolderContainer;
-        }
-        catch
-        {
-            // ignored
-        }
-
-        container ??= hand;
-
-        var blocker = new Control
-        {
-            Name = "SpectateMateHandBlocker",
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
-        container.AddChild(blocker);
-
-        // Centre-bottom band only: the left/right corners hold the draw / discard /
-        // exhaust pile buttons and must stay clickable.
-        blocker.AnchorLeft = 0.2f;
-        blocker.AnchorRight = 0.8f;
-        blocker.AnchorTop = 1f;
-        blocker.AnchorBottom = 1f;
-        blocker.OffsetLeft = 0f;
-        blocker.OffsetRight = 0f;
-        blocker.OffsetTop = -520f;
-        blocker.OffsetBottom = 0f;
-        blocker.ZIndex = 4;
-
-        _handBlocker = blocker;
-    }
-
-    private static void FreeHandBlocker()
-    {
-        try
-        {
-            if (_handBlocker != null && GodotObject.IsInstanceValid(_handBlocker))
-            {
-                _handBlocker.GetParent()?.RemoveChild(_handBlocker);
-                _handBlocker.QueueFree();
-            }
-        }
-        catch
-        {
-            // ignored
-        }
-
-        _handBlocker = null;
-    }
-
-    /// <summary>
-    /// Disables input callbacks only (keeps _Process running so the mirror still
-    /// animates). Numeric hotkeys live in the hand's unhandled-key handler.
-    /// </summary>
-    private static void BlockInputFlags(Node? node)
-    {
-        if (node == null || !GodotObject.IsInstanceValid(node))
-        {
-            return;
-        }
-
-        if (!SavedStates.ContainsKey(node))
-        {
-            SavedStates[node] = Capture(node);
-        }
-
-        node.SetProcessInput(false);
-        node.SetProcessUnhandledInput(false);
-        node.SetProcessUnhandledKeyInput(false);
-    }
-
-    private static void Block(Node? node)
-    {
-        if (node == null || !GodotObject.IsInstanceValid(node))
-        {
-            return;
-        }
-
-        if (!SavedStates.ContainsKey(node))
-        {
-            SavedStates[node] = Capture(node);
-        }
-
-        node.ProcessMode = Node.ProcessModeEnum.Disabled;
+        InteractionBlocker.Set(enabled);
     }
 
     /// <summary>
@@ -767,63 +650,6 @@ internal static class SpectateUi
     /// Restores exactly what was captured — never assumes "true". Turning a node's
     /// input processing back on when it never had it breaks target selection.
     /// </summary>
-    private static void RestoreInteraction()
-    {
-        foreach (KeyValuePair<Node, NodeState> pair in SavedStates)
-        {
-            Node node = pair.Key;
-            NodeState state = pair.Value;
-
-            try
-            {
-                if (node == null || !GodotObject.IsInstanceValid(node))
-                {
-                    continue;
-                }
-
-                node.ProcessMode = state.ProcessMode;
-                node.SetProcessInput(state.ProcessInput);
-                node.SetProcessUnhandledInput(state.ProcessUnhandledInput);
-                node.SetProcessUnhandledKeyInput(state.ProcessUnhandledKeyInput);
-                if (state.IsControl && node is Control control)
-                {
-                    control.MouseFilter = state.MouseFilter;
-                }
-            }
-            catch
-            {
-                // node went away with the combat
-            }
-        }
-
-        SavedStates.Clear();
-    }
-
-    private sealed class NodeState
-    {
-        public Node.ProcessModeEnum ProcessMode;
-        public bool ProcessInput;
-        public bool ProcessUnhandledInput;
-        public bool ProcessUnhandledKeyInput;
-        public bool IsControl;
-        public Control.MouseFilterEnum MouseFilter;
-    }
-
-    private static readonly Dictionary<Node, NodeState> SavedStates = new();
-
-    private static NodeState Capture(Node node)
-    {
-        return new NodeState
-        {
-            ProcessMode = node.ProcessMode,
-            ProcessInput = node.IsProcessingInput(),
-            ProcessUnhandledInput = node.IsProcessingUnhandledInput(),
-            ProcessUnhandledKeyInput = node.IsProcessingUnhandledKeyInput(),
-            IsControl = node is Control,
-            MouseFilter = node is Control control ? control.MouseFilter : Control.MouseFilterEnum.Stop,
-        };
-    }
-
     private static string? SafePath(Player? player)
     {
         try
