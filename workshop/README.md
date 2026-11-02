@@ -1,6 +1,6 @@
-# 发布到 Steam 创意工坊
+# 发布与更新
 
-Slay the Spire 2 的 AppId 是 **2868840**。官方提供了专用上传器，不要用 steamcmd。
+Slay the Spire 2 的 AppId 是 **2868840**。用官方上传器，不要用 steamcmd。
 
 - 上传器：https://github.com/megacrit/sts2-mod-uploader
 - 教程：https://tutorials.sts2modding.com/docs/11-upload-workshop/
@@ -10,36 +10,36 @@ Slay the Spire 2 的 AppId 是 **2868840**。官方提供了专用上传器，�
 **Workshop ID: 3832499210**
 https://steamcommunity.com/sharedfiles/filedetails/?id=3832499210
 
-## 工作区结构
+## 工作区
 
-上传器在 `E:\MOD\sts2\uploader\SpectateMate\`：
+`E:\MOD\sts2\uploader\SpectateMate\`
 
 ```
 SpectateMate/
-  workshop.json        条目配置（标题/描述/可见性/tags/依赖）
-  content/             ↑ 上传的文件
+  workshop.json        标题 / 描述 / 可见性 / tags / 依赖 / changeNote
+  content/             上传的文件
     mod_manifest.json
     SpectateMate.dll
-  image.png            封面，必须 < 1MB
+  image.png            封面，< 1MB
   mod_id.txt           首次上传后自动生成，后续更新靠它定位条目
-  README.md            上传器自带的说明
 ```
 
-## 更新流程
+## 更新
 
 ```powershell
-# 1. 重新编译（会自动部署到 mods 目录）
-cd "E:\MOD\sts2\godot_project\Spectate teammate"
+pwsh -NoProfile -ExecutionPolicy Bypass -File ".\workshop\update.ps1"
+```
+
+或者手动三步：
+
+```powershell
 dotnet build -c Release -v m
-
-# 2. 把新文件放进工作区
-copy "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\（功能）右键队友头像观战\mod_manifest.json" "E:\MOD\sts2\uploader\SpectateMate\content\"
-copy "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\（功能）右键队友头像观战\SpectateMate.dll" "E:\MOD\sts2\uploader\SpectateMate\content\"
-
-# 3. 改 workshop.json 里的 changeNote，然后上传
-cd "E:\MOD\sts2\uploader"
+copy "E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\（功能）右键队友头像观战\*" "E:\MOD\sts2\uploader\SpectateMate\content\"
+cd E:\MOD\sts2\uploader
 .\ModUploader.exe upload -w SpectateMate
 ```
+
+**不需要指定 ID**——上传器从工作区的 `mod_id.txt` 读 `3832499210`，不会重复创建条目。
 
 ## workshop.json 要点
 
@@ -50,12 +50,15 @@ cd "E:\MOD\sts2\uploader"
 | `visibility` | `public` / `private` / `unlisted` / `friends_only` |
 | `tags` | **上传后无法在工坊修改**，要一次定好 |
 | `dependencies` | **工坊 ID**（不是 mod id），RitsuLib 是 `3747602295` |
-| `changeNote` | 更新说明 |
+| `changeNote` | 更新说明，显示在工坊的更新记录里 |
 
 **注意**：json 里写了的字段会覆盖工坊上的内容。想保留工坊上手动改的值，就把对应字段删掉或设成 `null`。
 
-## 第一次踩到的坑
+## 踩过的坑
 
-- 用 steamcmd 上传 → 匿名账号无法创建条目，实名也要交互输密码，走不通
-- 上传器所在路径**不能含中文**，否则 Steam 直接 fatal error
-- 封面是 **`image.png`**（不是 jpg），必须小于 1MB
+| 坑 | 现象 |
+|---|---|
+| 用 steamcmd | `ERROR! Failed to create new workshop item.` —— 匿名账号不能建条目，实名又要交互输密码 |
+| 上传器路径含中文 | `cannot run from a folder path that includes non-English characters` |
+| 封面格式 | 必须是 `image.png`，< 1MB |
+| 依赖写法 | 要写工坊 ID，不是 `STS2-RitsuLib` 这种 mod id |
