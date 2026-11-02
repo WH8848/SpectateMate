@@ -58,21 +58,48 @@ internal static class ShuffleProbe
         {
             string start = startPile != null ? startPile.Type.ToString() : "?";
             string target = targetPile != null ? targetPile.Type.ToString() : "?";
-            // CardPile 本身不持有 owner，从它里面的第一张牌取。
+            // CardPile 本身不持有 owner，从它里面的牌取。
             string owner = "?";
+            string character = "?";
+            int cardCount = -1;
 
             try
             {
-                CardModel? sample = startPile?.Cards.Count > 0 ? startPile.Cards[0] : null;
-                owner = sample?.Owner?.NetId.ToString() ?? "null";
+                cardCount = startPile?.Cards.Count ?? -1;
+
+                CardModel? sample = startPile != null && startPile.Cards.Count > 0
+                    ? startPile.Cards[0]
+                    : null;
+
+                if (sample != null)
+                {
+                    owner = sample.Owner?.NetId.ToString() ?? "owner-null";
+                    character = sample.Owner?.Character?.Id.Entry ?? "char-null";
+                }
+                else
+                {
+                    owner = "no-card";
+                    character = "no-card";
+                }
+            }
+            catch (Exception e)
+            {
+                owner = "err:" + e.GetType().Name;
+            }
+
+            ulong localId = 0;
+            try
+            {
+                localId = MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.NetId;
             }
             catch
             {
-                owner = "err";
+                localId = 0;
             }
 
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] shuffle vfx: {start}->{target} owner={owner} trail={trailPath}");
+                $"[{ModEntry.ModId}] shuffle vfx: {start}->{target} cards={cardCount} " +
+                $"owner={owner} char={character} local={localId} trail={trailPath}");
         }
         catch
         {
