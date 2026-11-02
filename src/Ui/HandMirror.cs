@@ -869,27 +869,13 @@ internal static class HandMirror
                 return;
             }
 
-            // 只有「鼠标真的还压在它身上」才算有效焦点。
+            // 只要还挂着焦点就一律清掉。
             //
-            // 之前只检查「还在 Holders 里」，而焦点牌当然在列表里，
-            // 所以永远不满足清理条件，翘起状态一直留着。
-            // 用鼠标位置对照它的命中框，才能分辨出这是残留还是真的在悬停。
-            if (GodotObject.IsInstanceValid(focused) && Holders.Contains(focused))
-            {
-                try
-                {
-                    Vector2 mouse = focused.GetViewport().GetMousePosition();
-
-                    if (focused.Hitbox.GetGlobalRect().HasPoint(mouse))
-                    {
-                        return;
-                    }
-                }
-                catch
-                {
-                    // 拿不到鼠标位置就按残留处理
-                }
-            }
+            // 观战期间我们不主动设焦点（见 OnHolderFocused），所以读到的
+            // 必然是残留：来自游戏自己、或旧版本留下的状态。
+            // 不再判断「鼠标是否指着它」——那个判断一旦误判，翘起就会留住，
+            // 而用户看到的表现正是「悬停一下会回正，移开又错乱」。
+            _ = focused;
 
             SetFocused(hand, null);
             LastFocusedIdxField?.SetValue(hand, -1);
@@ -905,19 +891,19 @@ internal static class HandMirror
 
     private static void OnHolderFocused(NHandCardHolder holder)
     {
-        NPlayerHand? hand = _lastHand;
-        if (hand == null || !GodotObject.IsInstanceValid(hand))
-        {
-            return;
-        }
-
-        // GetIndex() is an extension that assumes a real hand holder; use our own
-        // list index instead. RefreshLayout only needs FocusedHolder for the
-        // identity check and _lastFocusedHolderIdx for the default-focus fallback.
-        int index = Holders.IndexOf(holder);
-        SetFocused(hand, holder);
-        LastFocusedIdxField?.SetValue(hand, index);
-        hand.ForceRefreshCardIndices();
+        // 观战时故意不设置焦点。
+        //
+        // RefreshLayout 对 FocusedHolder 有特殊处理：把它抬高、放大到 1.0，
+        // 并让左右邻居按距离让位。这个状态一旦没被及时清掉（holder 被销毁、
+        // 鼠标移出窗口、观战切换都可能让 Unfocused 不来），
+        // 就会永久停留在某张牌上——表现出来就是「某张牌一直翘着，
+        // 两边的牌挤在一起」，也就是位置错乱。
+        //
+        // 鼠标悬停时游戏会重新跑布局，所以看起来「一悬停就自动回正」，
+        // 那只是临时覆盖，焦点还在。
+        //
+        // 观战本来就不需要悬停抬牌，这里不设焦点，问题从源头消失。
+        _ = holder;
     }
 
     private static void OnHolderUnfocused(NHandCardHolder holder)
