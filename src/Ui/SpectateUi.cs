@@ -16,6 +16,8 @@ using MegaCrit.Sts2.Core.Nodes.Potions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Runs;
 
+using static SpectateMate.Ui.ReflectionUtil;
+
 namespace SpectateMate.Ui;
 
 /// <summary>
@@ -606,19 +608,10 @@ internal static class SpectateUi
         }
     }
 
-    private static void InvokeMethod(object instance, string methodName, params object?[] args)
-    {
-        Method(instance.GetType(), methodName)?.Invoke(instance, args);
-    }
-
     /// <summary>
-    /// Blocks (or restores) local interaction while spectating: hand clicks, number
-    /// keys, potions, end-turn and pile buttons all stop responding.
-    /// </summary>
-    /// <summary>
-    /// Only the HAND AREA and the END TURN button are blocked. Piles, relics and
-    /// potions stay clickable so the teammate's draw/discard/exhaust piles can be
-    /// inspected while spectating.
+    /// Blocks (or restores) local interaction while spectating.
+    /// Only the HAND AREA and the END TURN button are blocked — piles, relics and
+    /// potions stay clickable so the teammate's piles can be inspected.
     /// </summary>
     public static void SetInteraction(bool enabled)
     {
@@ -1043,84 +1036,5 @@ internal static class SpectateUi
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] ui step '{name}' failed: {e.GetType().Name}: {e.Message}");
         }
-    }
-
-    /// <summary>
-    /// Walks the inheritance chain. Type.GetField never returns private fields
-    /// declared on a BASE class, which silently broke every lookup of
-    /// NCombatCardPile._pile / _currentCount / _countLabel.
-    /// </summary>
-    private static FieldInfo? Field(Type type, string name)
-    {
-        const BindingFlags flags =
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-
-        for (Type? current = type; current != null && current != typeof(object); current = current.BaseType)
-        {
-            FieldInfo? field = current.GetField(name, flags);
-            if (field != null)
-            {
-                return field;
-            }
-        }
-
-        return null;
-    }
-
-    private static MethodInfo? Method(Type type, string name)
-    {
-        const BindingFlags flags =
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-
-        for (Type? current = type; current != null && current != typeof(object); current = current.BaseType)
-        {
-            MethodInfo? method = current.GetMethod(name, flags);
-            if (method != null)
-            {
-                return method;
-            }
-        }
-
-        return null;
-    }
-
-    private static object? Peek(object instance, string fieldName)
-    {
-        try
-        {
-            return Field(instance.GetType(), fieldName)?.GetValue(instance);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static T? Find<T>(object instance, string fieldName) where T : class
-    {
-        return Field(instance.GetType(), fieldName)?.GetValue(instance) as T;
-    }
-
-    private static T Read<T>(object instance, string fieldName)
-    {
-        try
-        {
-            object? value = Field(instance.GetType(), fieldName)?.GetValue(instance);
-            return value is T typed ? typed : default!;
-        }
-        catch
-        {
-            return default!;
-        }
-    }
-
-    private static void Set(object instance, string fieldName, object? value)
-    {
-        Field(instance.GetType(), fieldName)?.SetValue(instance, value);
-    }
-
-    private static void Invoke(object instance, string methodName)
-    {
-        Method(instance.GetType(), methodName)?.Invoke(instance, null);
     }
 }
