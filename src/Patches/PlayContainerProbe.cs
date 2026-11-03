@@ -574,6 +574,75 @@ internal static class PlayContainerProbe
         }
     }
 
+    /// <summary>补间时长 0.25 秒，超过这个距离就认为卡片没有走到位。</summary>
+    private const float SettleTolerance = 48f;
+
+    /// <summary>
+    /// 保底补位：卡片进入播放区 0.3 秒后（补间 0.25 秒理应结束）复核位置。
+    ///
+    /// 入场补间绑在 NCombatRoom 上，速切导致该节点重建时会被连带中止，
+    /// 卡片就停在 (325, 450) ——那是 PlayQueue 的位置，屏幕左侧偏上，
+    /// 也就是用户看到的「随机跳到左上角」。
+    ///
+    /// 补间正常跑完时位置与目标一致，这里完全不触发；
+    /// 只有被打断、仍停在起点附近时才把它挪到落点。
+    /// </summary>
+    private static void ScheduleSettle(NCard card)
+    {
+        try
+        {
+            SceneTree? tree = card.GetTree();
+
+            if (tree == null)
+            {
+                return;
+            }
+
+            string name = card.Model?.Id.Entry ?? "?";
+
+            SceneTreeTimer timer = tree.CreateTimer(0.3);
+            timer.Timeout += () =>
+            {
+                try
+                {
+                    if (card == null || !GodotObject.IsInstanceValid(card))
+                    {
+                        return;
+                    }
+
+                    Control? play = NCombatRoom.Instance?.Ui?.PlayContainer;
+
+                    if (play == null || card.GetParent() != play)
+                    {
+                        return;
+                    }
+
+                    Vector2 local = PileType.Play.GetTargetPosition(card);
+                    Vector2 target = play.GetGlobalTransform() * local;
+                    Vector2 pos = card.GlobalPosition;
+
+                    if ((pos - target).Length() <= SettleTolerance)
+                    {
+                        return;
+                    }
+
+                    card.GlobalPosition = target;
+
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] play settle FIXED: {name} {pos} -> {target}");
+                }
+                catch
+                {
+                    // ignored
+                }
+            };
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void AddPrefix(NCombatUi __instance, NCard card)
     {
         try
@@ -605,6 +674,7 @@ internal static class PlayContainerProbe
                 $"pos={card.Position} global={card.GlobalPosition}");
 
             ScheduleDwell(card);
+            ScheduleSettle(card);
 
             SceneTree? tree = card.GetTree();
 
