@@ -257,13 +257,15 @@ internal static class PlayContainerProbe
 
         try
         {
-            if (newPileType != PileType.Play || !SpectateOverlay.IsOpen)
+            // 不限制 IsOpen：速切之后卡片仍会被继续搬运，
+            // 那些记录恰恰是判断它最终停在哪里的关键。
+            if (newPileType == PileType.Play && !SpectateOverlay.IsOpen)
             {
-                return;
+                // 进入播放区只在观战期间关心，其余去向一律记录。
             }
 
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] move-node: {cardNode?.Model?.Id.Entry} " +
+                $"[{ModEntry.ModId}] move-node: {cardNode?.Model?.Id.Entry} -> {newPileType} " +
                 $"from={__state} local={cardNode?.Position} " +
                 $"parent={cardNode?.GetParent()?.Name.ToString() ?? "null"}");
         }
@@ -280,18 +282,13 @@ internal static class PlayContainerProbe
     {
         try
         {
-            if (cardNode == null || !GodotObject.IsInstanceValid(cardNode) || newPileType != PileType.Play)
-            {
-                return;
-            }
-
-            if (!SpectateOverlay.IsOpen)
+            if (cardNode == null || !GodotObject.IsInstanceValid(cardNode))
             {
                 return;
             }
 
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] move-node after: {cardNode.Model?.Id.Entry} " +
+                $"[{ModEntry.ModId}] move-node after: {cardNode.Model?.Id.Entry} -> {newPileType} " +
                 $"saved={__state} now={cardNode.GlobalPosition} " +
                 $"parent={cardNode.GetParent()?.Name.ToString() ?? "null"}");
         }
