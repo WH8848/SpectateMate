@@ -251,9 +251,68 @@ internal static class PlayContainerProbe
     /// <summary>
     /// 通用：任何以 NCard 为首参的特效 Create，记录卡片此刻的位置。
     /// </summary>
+    /// <summary>
+    /// 卡片即将离开播放区时，如果它的入场补间还没跑完，先把位置补到落点。
+    ///
+    /// 入场补间绑在 NCombatRoom 上：
+    ///     Tween tween = NCombatRoom.Instance.CreateTween().SetParallel();
+    /// 速切导致该节点重建时，补间会被连带中止，卡片停在半路——
+    /// 也就是「播放位置有时在正中、有时在左上角」的来源。
+    ///
+    /// 这个函数之后必定执行 cardNode.PlayPileTween?.Kill()，
+    /// 位置就定在那一瞬间，所以调整 prefix 里将要保存的值即可，
+    /// 不改变任何结算逻辑、也不动补间本身。
+    /// 补间已经跑完（IsRunning 为假）时完全不触发。
+    /// </summary>
+    private static void CatchUpPlayTween(NCard cardNode)
+    {
+        try
+        {
+            Tween? tween = cardNode.PlayPileTween;
+
+            if (tween == null || !tween.IsRunning())
+            {
+                return;
+            }
+
+            Control? play = NCombatRoom.Instance?.Ui?.PlayContainer;
+
+            if (play == null || cardNode.GetParent() != play)
+            {
+                return;
+            }
+
+            Vector2 before = cardNode.GlobalPosition;
+            Vector2 local = PileType.Play.GetTargetPosition(cardNode);
+            Vector2 target = play.GetGlobalTransform() * local;
+            cardNode.GlobalPosition = target;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] play tween catch-up: {cardNode.Model?.Id.Entry} " +
+                $"{before} -> {target}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void MoveNodePrefix(NCard cardNode, PileType newPileType, ref Vector2 __state)
     {
         __state = cardNode?.GlobalPosition ?? Vector2.Zero;
+
+        try
+        {
+            if (cardNode != null && newPileType != PileType.Play)
+            {
+                CatchUpPlayTween(cardNode);
+                __state = cardNode.GlobalPosition;
+            }
+        }
+        catch
+        {
+            // ignored
+        }
 
         try
         {
