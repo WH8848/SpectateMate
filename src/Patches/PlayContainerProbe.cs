@@ -338,6 +338,34 @@ internal static class PlayContainerProbe
     private static readonly Vector2 StandardCardSize = new(300f, 422f);
 
     /// <summary>
+    /// 播放区落点的全局坐标。
+    ///
+    /// PileType.Play 的公式是：
+    ///     PlayContainer.Size * 0.5f - node.Size * 0.5f + Vector2.Up * 100f
+    /// 其中 -node.Size*0.5 把「中心」换算成「左上角」。
+    /// 卡片刚创建时 Size 还是 (0,0)，这一项等于没减，落点会偏右下约 (150,211)，
+    /// 所以这里补上标准卡牌的一半。
+    /// </summary>
+    private static Vector2 PlayLandingPoint(NCombatUi ui, NCard card)
+    {
+        Control? play = ui?.PlayContainer;
+
+        if (play == null)
+        {
+            return card.GlobalPosition;
+        }
+
+        Vector2 local = PileType.Play.GetTargetPosition(card);
+
+        if (card.Size.X < 1f || card.Size.Y < 1f)
+        {
+            local -= StandardCardSize * 0.5f;
+        }
+
+        return play.GetGlobalTransform() * local;
+    }
+
+    /// <summary>
     /// 换堆之后的处理。
     ///
     /// 观战时把进入播放区的卡片直接摆到落点：
@@ -717,6 +745,7 @@ internal static class PlayContainerProbe
             ulong lastSample = 0;
             int samples = 0;
             Vector2 lastPos = new(-9999f, -9999f);
+            Vector2 lastSize = Vector2.Zero;
             int frozen = 0;
 
             void Step()
@@ -763,9 +792,24 @@ internal static class PlayContainerProbe
 
                     samples++;
 
+                    // Size 从 0 变成正常值的那一刻，落点会突然改变
+                    // （少减的半张卡补上了）。此时按新尺寸重算并直接归位，
+                    // 否则补间会沿着旧落点飞，最终偏右下约 (150,211)。
+                    if (lastSize.X < 1f && card.Size.X >= 1f)
+                    {
+                        Vector2 relanded = PlayLandingPoint(NCombatRoom.Instance!.Ui!, card);
+                        card.GlobalPosition = relanded;
+                        lastPos = relanded;
+
+                        ModEntry.Log.Info(
+                            $"[{ModEntry.ModId}] play track RELAND: {name} " +
+                            $"size {lastSize} -> {card.Size} at {relanded}");
+                    }
+
+                    lastSize = card.Size;
+
                     Vector2 pos = card.GlobalPosition;
-                    Vector2 target = play.GetGlobalTransform()
-                        * PileType.Play.GetTargetPosition(card);
+                    Vector2 target = PlayLandingPoint(NCombatRoom.Instance!.Ui!, card);
                     float delta = (pos - target).Length();
 
                     // 连续两次采样位置几乎不动、离目标又很远，说明补间已经停了。
@@ -841,6 +885,18 @@ internal static class PlayContainerProbe
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] add-to-play after: {card.Model?.Id.Entry} " +
                 $"pos={card.Position} global={card.GlobalPosition}");
+
+            // RemoveChildSafely + AddChildSafely 会让 Control 的锚点重新计算，
+            // 位置从 (810,229) 漂到 (836,266) 这种程度。立刻按落点纠正回来。
+            if (SpectateOverlay.IsOpen)
+            {
+                Vector2 corrected = PlayLandingPoint(__instance, card);
+                card.GlobalPosition = corrected;
+
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] add-to-play corrected: {card.Model?.Id.Entry} " +
+                    $"-> {corrected} (size={card.Size})");
+            }
 
             ScheduleDwell(card);
             ScheduleSettle(card);
