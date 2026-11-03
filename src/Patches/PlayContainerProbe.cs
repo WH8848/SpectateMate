@@ -194,14 +194,17 @@ internal static class PlayContainerProbe
             // 只在观战期间扫就会永远看不到它。
             ulong now = Godot.Time.GetTicksMsec();
 
-            if (now - _lastScanMs < 3000)
+            if (now - _lastScanMs < 1000)
             {
                 return;
             }
 
             _lastScanMs = now;
 
-            Node? ui = NCombatRoom.Instance?.Ui;
+            // 之前只扫 Ui，但停在左上角的那张牌并不在 Ui 之下，
+            // 扫描结果里从来没有出现过它。改成从整个战斗房间开始遍历，
+            // 把 VfxContainer、各种特效容器里的卡片也纳入范围。
+            Node? ui = NCombatRoom.Instance;
 
             if (ui == null)
             {
