@@ -153,11 +153,8 @@ internal static class PlayContainerProbe
     {
         try
         {
-            if (!SpectateOverlay.IsOpen)
-            {
-                return;
-            }
-
+            // 不检查 IsOpen：这个现象在未观战时也会出现，
+            // 只在观战期间扫就会永远看不到它。
             ulong now = Godot.Time.GetTicksMsec();
 
             if (now - _lastScanMs < 3000)
