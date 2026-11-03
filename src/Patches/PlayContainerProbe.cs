@@ -410,8 +410,47 @@ internal static class PlayContainerProbe
             ModEntry.Log.Warn(
                 $"[{ModEntry.ModId}] nested card: {card.Model?.Id.Entry} " +
                 $"inside {parent.Name} of " +
-                $"{((grand as NCard)?.Model?.Id.Entry ?? grand?.Name.ToString() ?? "?")} " +
+                $"{(grand?.Name.ToString() ?? "?")} " +
                 $"global={card.GlobalPosition}");
+
+            // 修复：把被借用的卡片收回播放区。
+            //
+            // NMultiplayerCardIntent 的 Card 属性只替换自己的占位卡 Model，
+            // 从不接收外部 NCard。而这里出现了外部 NCard 被直接加进
+            // CardSubViewport 的情况——那个子视口处于离屏渲染位置，
+            // 卡片于是显示在 (90,112) 这类局部坐标上，也就是左上角。
+            //
+            // 卡片模型仍在 Play 堆时，把它移回 PlayContainer 并摆到正确落点；
+            // 模型已经不在 Play 堆的（已结算）则直接回收节点。
+            Control? play = NCombatRoom.Instance?.Ui?.PlayContainer;
+            PileType? pileType = card.Model?.Pile?.Type;
+
+            if (play == null)
+            {
+                return;
+            }
+
+            parent.RemoveChild(card);
+
+            if (pileType == PileType.Play)
+            {
+                play.AddChild(card);
+
+                Vector2 local = PileType.Play.GetTargetPosition(card);
+                card.GlobalPosition = play.GetGlobalTransform() * local;
+
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] nested card RETURNED: {card.Model?.Id.Entry} " +
+                    $"-> PlayContainer at {card.GlobalPosition}");
+            }
+            else
+            {
+                card.QueueFree();
+
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] nested card FREED: {card.Model?.Id.Entry} " +
+                    $"(pile={pileType?.ToString() ?? "null"})");
+            }
         }
         catch
         {
