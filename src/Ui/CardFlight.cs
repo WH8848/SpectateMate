@@ -96,51 +96,11 @@ public static class CardFlight
     }
 
     /// <summary>每拍调用：检查挂起中的牌是否已经落定。</summary>
-    private static ulong _lastSettlingLogMs;
-
     public static void UpdateSettling()
     {
         if (Settling.Count == 0)
         {
             return;
-        }
-
-        // 每 2 秒把等待中的牌打一遍，用来确认是不是有牌永远等不到去向。
-        try
-        {
-            ulong now = Godot.Time.GetTicksMsec();
-
-            if (now - _lastSettlingLogMs > 2000)
-            {
-                _lastSettlingLogMs = now;
-
-                var sb = new System.Text.StringBuilder();
-
-                foreach (SettlingCard it in Settling)
-                {
-                    PileType? p = null;
-
-                    try
-                    {
-                        p = it.Model.Pile?.Type;
-                    }
-                    catch
-                    {
-                        p = null;
-                    }
-
-                    sb.Append(it.Model.Id.Entry)
-                        .Append(':').Append(p?.ToString() ?? "null")
-                        .Append(" stable=").Append(it.StableCount)
-                        .Append("; ");
-                }
-
-                ModEntry.Log.Info($"[{ModEntry.ModId}] settling({Settling.Count}): {sb}");
-            }
-        }
-        catch
-        {
-            // ignored
         }
 
         foreach (SettlingCard item in Settling.ToArray())
@@ -459,12 +419,7 @@ public static class CardFlight
                 return;
             }
 
-            Vector2 beforeFly = item.Card.GlobalPosition;
             item.Card.Reparent(container, true);
-
-            ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] fly vfx: {item.Model.Id.Entry} -> {pile} " +
-                $"posBefore={beforeFly} posAfter={item.Card.GlobalPosition}");
 
             NCardFlyVfx? vfx = NCardFlyVfx.Create(
                 item.Card,

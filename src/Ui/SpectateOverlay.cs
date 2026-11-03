@@ -395,20 +395,6 @@ public static class SpectateOverlay
             host.AddChild(_idleRefresh);
             _idleRefresh.Timeout += () =>
             {
-                // 扫描要在观战期间跑：左上角那张卡只在观战时出现。
-                Patches.PlayContainerProbe.ScanCards();
-
-                // 战斗结束时打出的牌，卡片节点没人负责移走。
-                // 平时这条队列是空的，只有真的捕获到才会动手。
-                try
-                {
-                    Patches.OrphanPlayFix.Tick();
-                }
-                catch
-                {
-                    // ignored
-                }
-
                 if (IsOpen)
                 {
                     return;
