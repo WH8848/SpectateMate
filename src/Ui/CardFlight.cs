@@ -822,6 +822,32 @@ public static class CardFlight
                 card.GetParent()?.RemoveChild(card);
                 NodePool.Free(card);
             }
+            else if (card != null && GodotObject.IsInstanceValid(card))
+            {
+                // 卡片已经不在 holder 名下了，但也不一定归特效管。
+                //
+                // 出牌动画第一步就是 card.Reparent(NCombatUi)，
+                // 而 BeginSettling 要等补间跑完 0.2 秒才执行。
+                // 如果这段时间里退出观战（快速切换最容易触发），
+                // 卡片既不在 Settling 里、也不在 holder 名下——
+                // ownsCard 为 false，原本会被整个跳过，于是永远留在屏幕上。
+                //
+                // 判据是父节点类型：还在 NCombatUi 下的，说明只是挂在播放区，
+                // 直接回收；在角色 VfxContainer 下的说明已被 NCardFlyVfx 接管，
+                // 那条路径会自己归还，不能碰。
+                Node? parent = card.GetParent();
+
+                if (parent is NCombatRoom || parent is NCombatUi)
+                {
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] reclaim orphan card: {card.Model?.Id.Entry} " +
+                        $"parent={parent.Name}");
+
+                    ResetPooledCard(card);
+                    parent.RemoveChild(card);
+                    NodePool.Free(card);
+                }
+            }
         }
         catch
         {
