@@ -657,6 +657,81 @@ internal static class PlayContainerProbe
         }
     }
 
+    /// <summary>
+    /// 每帧采样卡片在播放区的位置，直到它离开或超时。
+    /// 用来还原「卡片到底有没有停在起点」这件事——
+    /// 定时器只能看到某一瞬间，抓不住中途的跳变。
+    /// </summary>
+    private static void TrackPlayMotion(NCard card)
+    {
+        try
+        {
+            SceneTree? tree = card.GetTree();
+
+            if (tree == null)
+            {
+                return;
+            }
+
+            string name = card.Model?.Id.Entry ?? "?";
+            int frames = 0;
+            Vector2 last = new(-9999f, -9999f);
+
+            void Step()
+            {
+                try
+                {
+                    frames++;
+
+                    if (card == null || !GodotObject.IsInstanceValid(card) || frames > 90)
+                    {
+                        tree.ProcessFrame -= Step;
+                        return;
+                    }
+
+                    Control? play = NCombatRoom.Instance?.Ui?.PlayContainer;
+
+                    if (play == null || card.GetParent() != play)
+                    {
+                        tree.ProcessFrame -= Step;
+                        ModEntry.Log.Info(
+                            $"[{ModEntry.ModId}] play track end: {name} after {frames} frames");
+                        return;
+                    }
+
+                    Vector2 pos = card.GlobalPosition;
+
+                    // 只在位置真正变化时记录，避免刷屏。
+                    if ((pos - last).Length() < 40f && frames > 1)
+                    {
+                        return;
+                    }
+
+                    last = pos;
+
+                    Vector2 target = play.GetGlobalTransform()
+                        * PileType.Play.GetTargetPosition(card);
+
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] play track f{frames}: {name} " +
+                        $"pos={pos} target={target} size={card.Size} " +
+                        $"scale={card.Scale.X:0.00} " +
+                        $"tween={(card.PlayPileTween?.IsRunning() ?? false)}");
+                }
+                catch
+                {
+                    tree.ProcessFrame -= Step;
+                }
+            }
+
+            tree.ProcessFrame += Step;
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void AddPrefix(NCombatUi __instance, NCard card)
     {
         try
@@ -689,6 +764,7 @@ internal static class PlayContainerProbe
 
             ScheduleDwell(card);
             ScheduleSettle(card);
+            TrackPlayMotion(card);
 
             SceneTree? tree = card.GetTree();
 
