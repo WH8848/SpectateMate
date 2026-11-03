@@ -9,3 +9,4 @@ workshop/content/
 bin/
 obj/
 
+\n# 视频抽帧临时目录\n.frames/\n.frames2/\n
