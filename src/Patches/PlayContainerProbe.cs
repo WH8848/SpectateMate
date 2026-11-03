@@ -51,6 +51,13 @@ internal static class PlayContainerProbe
                 _harmony.Patch(lerp, prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(LerpPrefix)));
             }
 
+            var addPost = AccessTools.Method(typeof(NCombatUi), "AddToPlayContainer");
+
+            if (addPost != null)
+            {
+                _harmony.Patch(addPost, postfix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(AddPostfix)));
+            }
+
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] play probe: add={add != null} lerp={lerp != null}");
         }
@@ -71,6 +78,55 @@ internal static class PlayContainerProbe
                 $"pc(size={pc?.Size} pos={pc?.GlobalPosition} scale={pc?.Scale}) " +
                 $"card(local={card.Position} global={card.GlobalPosition} size={card.Size}) " +
                 $"parent={card.GetParent()?.Name}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    /// <summary>
+    /// reparent 之后立刻记一次，再过 0.35 秒（补间时长 0.25）记一次，
+    /// 用来判断补间到底有没有把卡片带到位。
+    /// </summary>
+    private static void AddPostfix(NCombatUi __instance, NCard card)
+    {
+        try
+        {
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] add-to-play after: {card.Model?.Id.Entry} " +
+                $"pos={card.Position} global={card.GlobalPosition}");
+
+            SceneTree? tree = card.GetTree();
+
+            if (tree == null)
+            {
+                return;
+            }
+
+            SceneTreeTimer timer = tree.CreateTimer(0.35);
+            string name = card.Model?.Id.Entry ?? "?";
+            timer.Timeout += () =>
+            {
+                try
+                {
+                    if (!GodotObject.IsInstanceValid(card))
+                    {
+                        ModEntry.Log.Info(
+                            $"[{ModEntry.ModId}] play settle: {name} card gone");
+                        return;
+                    }
+
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] play settle: {name} pos={card.Position} " +
+                        $"global={card.GlobalPosition} scale={card.Scale} " +
+                        $"parent={card.GetParent()?.Name}");
+                }
+                catch
+                {
+                    // ignored
+                }
+            };
         }
         catch
         {
