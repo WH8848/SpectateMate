@@ -43,6 +43,7 @@ public static class ModEntry
             ShuffleTrailFix.Install();
             PlayContainerProbe.Install();
             OrphanPlayFix.Install();
+            ExhaustVfxPositionFix.Install();
             RitsuLibFramework.ApplyRequiredPatcher(patcher, OnRequiredPatchFailed);
 
             RitsuLibFramework.SubscribeLifecycle<RunEndedEvent>(_ => SpectateOverlay.CloseAll());
