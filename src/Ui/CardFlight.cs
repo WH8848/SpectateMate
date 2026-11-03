@@ -68,6 +68,9 @@ public static class CardFlight
     /// </summary>
     public static void ReleaseAll()
     {
+        ModEntry.Log.Info(
+            $"[{ModEntry.ModId}] release all: settling={Settling.Count} detached={Detached.Count}");
+
         // 先处理播放区里的牌：连同卡片本体一起回收。
         foreach (SettlingCard item in Settling.ToArray())
         {
@@ -391,6 +394,10 @@ public static class CardFlight
                 return;
             }
 
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] settling +1: {card.Model?.Id.Entry} " +
+                $"(now {Settling.Count + 1})");
+
             Settling.Add(new SettlingCard
             {
                 Holder = holder,
@@ -522,9 +529,20 @@ public static class CardFlight
                 && card.GetParent() != null
                 && card.GetParent() != item.Holder)
             {
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] discard settled card: {item.Model.Id.Entry} " +
+                    $"parent={card.GetParent()?.Name}");
+
                 ResetPooledCard(card);
                 card.GetParent()?.RemoveChild(card);
                 NodePool.Free(card);
+            }
+            else
+            {
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] discard settled SKIPPED: {item.Model.Id.Entry} " +
+                    $"valid={(card != null && GodotObject.IsInstanceValid(card))} " +
+                    $"parent={card?.GetParent()?.Name.ToString() ?? "null"}");
             }
         }
         catch
