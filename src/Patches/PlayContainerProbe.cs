@@ -230,6 +230,10 @@ internal static class PlayContainerProbe
                     .Append('/').Append(card.GetParent()?.Name ?? "?")
                     .Append(card.Visible ? "" : "(hidden)")
                     .Append(' ');
+
+                // 卡片被塞进另一张卡的子视口：这是非原版的状态，
+                // 它会在离屏渲染容器里算坐标，显示位置完全错位。
+                CheckNestedViewport(card);
             }
 
             ModEntry.Log.Info($"[{ModEntry.ModId}] card scan({count}): {sb}");
@@ -378,6 +382,36 @@ internal static class PlayContainerProbe
                 $"[{ModEntry.ModId}] fly create: {card.Model?.Id.Entry} " +
                 $"global={card.GlobalPosition} local={card.Position} size={card.Size} " +
                 $"parent={card.GetParent()?.Name.ToString() ?? "null"}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    /// <summary>
+    /// 卡片出现在另一个 PCard 的 CardSubViewport 之下时，记录一次。
+    /// CardSubViewport 是 NCard 场景自带的离屏渲染容器，
+    /// 正常情况下只会容纳卡片自己的渲染内容，不会装别的 NCard。
+    /// </summary>
+    private static void CheckNestedViewport(NCard card)
+    {
+        try
+        {
+            Node? parent = card.GetParent();
+
+            if (parent == null || !parent.Name.ToString().Contains("CardSubViewport"))
+            {
+                return;
+            }
+
+            Node? grand = parent.GetParent();
+
+            ModEntry.Log.Warn(
+                $"[{ModEntry.ModId}] nested card: {card.Model?.Id.Entry} " +
+                $"inside {parent.Name} of " +
+                $"{((grand as NCard)?.Model?.Id.Entry ?? grand?.Name.ToString() ?? "?")} " +
+                $"global={card.GlobalPosition}");
         }
         catch
         {
