@@ -94,9 +94,17 @@ internal static class PlayTargetPositionFix
                 return;
             }
 
-            __result = play.Size * 0.5f
-                     - NCard.defaultSize * 0.5f
-                     + new Vector2(0f, -100f);
+            // 不减半张卡的尺寸。
+            //
+            // 原版公式是 PlayContainer.Size*0.5 - node.Size*0.5 + Up*100，
+            // 后一项把「容器中心」换算成「卡片左上角」。但观战时卡片节点
+            // 往往是刚从池里取出的，Size 还是 (0,0)，这一项等于没减，
+            // 落点是 (960,440)——这才是观战画面里正确的那个位置。
+            //
+            // 一旦 Size 被别的路径补成 (300,422)，同一张牌就会突然跑到
+            // (810,229)，视觉上偏左上。所以这里固定按 Size 为零来算，
+            // 让落点永远稳定在 (960,440)。
+            __result = play.Size * 0.5f + new Vector2(0f, -100f);
         }
         catch
         {
