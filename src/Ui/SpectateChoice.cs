@@ -502,16 +502,42 @@ public static class SpectateChoice
     /// </summary>
     public static void Close(bool clearMode = false)
     {
+        var screen = _screen;
+
         try
         {
-            if (_screen is GodotObject node && GodotObject.IsInstanceValid(node))
+            if (screen is GodotObject node && GodotObject.IsInstanceValid(node))
             {
-                NOverlayStack.Instance?.Remove(_screen);
+                NOverlayStack.Instance?.Remove(screen);
             }
         }
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] choice peek close failed: {e.Message}");
+        }
+
+        // 兜底：无论 Remove 是否成功，都不能让这个界面留在屏幕上。
+        //
+        // Remove 抛异常时下面这行以前会把引用置空，于是节点既没被摘掉、
+        // 也再没人拿得到——一个空的、可见的选牌界面就永远盖在屏幕上，
+        // 战斗结束后的奖励界面会被它挡住，表现为「选不了卡牌奖励」。
+        try
+        {
+            if (screen is Control control && GodotObject.IsInstanceValid(control))
+            {
+                ModEntry.Log.Info(
+                    $"[{ModEntry.ModId}] choice peek closed: removing node " +
+                    $"(visible={control.Visible} " +
+                    $"parent={control.GetParent()?.Name.ToString() ?? "null"})");
+
+                control.Visible = false;
+                control.GetParent()?.RemoveChild(control);
+                control.QueueFree();
+            }
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] choice peek cleanup failed: {e.Message}");
         }
 
         _screen = null;
