@@ -144,6 +144,23 @@ internal static class PlayContainerProbe
                 ModEntry.Log.Info($"[{ModEntry.ModId}] create-node probe: hooked");
             }
 
+            // 所有出牌路径（手动 / 自动 / FindOnTable 命中）都会经过这里，
+            // 是唯一能兜住「卡片从哪来」的收口点。
+            var moveNode = AccessTools.Method(
+                typeof(CardPileCmd),
+                "MoveCardNodeToNewPileBeforeTween",
+                new[] { typeof(NCard), typeof(PileType) });
+
+            if (moveNode != null)
+            {
+                _harmony.Patch(
+                    moveNode,
+                    prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(MoveNodePrefix)),
+                    postfix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(MoveNodePostfix)));
+
+                ModEntry.Log.Info($"[{ModEntry.ModId}] move-node probe: hooked");
+            }
+
             var addPost = AccessTools.Method(typeof(NCombatUi), "AddToPlayContainer");
 
             if (addPost != null)
@@ -227,6 +244,63 @@ internal static class PlayContainerProbe
     /// <summary>
     /// 通用：任何以 NCard 为首参的特效 Create，记录卡片此刻的位置。
     /// </summary>
+    private static void MoveNodePrefix(NCard cardNode, PileType newPileType, ref Vector2 __state)
+    {
+        __state = cardNode?.GlobalPosition ?? Vector2.Zero;
+
+        try
+        {
+            if (newPileType != PileType.Play || !SpectateOverlay.IsOpen)
+            {
+                return;
+            }
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] move-node: {cardNode?.Model?.Id.Entry} " +
+                $"from={__state} local={cardNode?.Position} " +
+                $"parent={cardNode?.GetParent()?.Name.ToString() ?? "null"}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    /// <summary>
+    /// 换堆把卡片移进 PlayContainer 之后，如果它仍贴在原点，
+    /// 说明起点本来就没算出来。此时直接换到屏幕中部偏下，
+    /// 后面 AppendPlayPileLerpTween 就会从正确的位置起步。
+    /// </summary>
+    private static void MoveNodePostfix(NCard cardNode, PileType newPileType, Vector2 __state)
+    {
+        try
+        {
+            if (cardNode == null || !GodotObject.IsInstanceValid(cardNode) || newPileType != PileType.Play)
+            {
+                return;
+            }
+
+            Vector2 g = cardNode.GlobalPosition;
+
+            if (g.Length() > 48f)
+            {
+                return;
+            }
+
+            Vector2 size = NGame.Instance?.GetViewportRect().Size ?? new Vector2(1920f, 1080f);
+            Vector2 fallback = new(size.X * 0.5f, size.Y * 0.62f);
+            cardNode.GlobalPosition = fallback;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] move-node FIXED: {cardNode.Model?.Id.Entry} " +
+                $"saved={__state} now={g} -> {fallback}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void CreateNodePrefix(CardModel card, bool owningPlayerIsLocal, ref Vector2 __state)
     {
         __state = Vector2.Zero;
