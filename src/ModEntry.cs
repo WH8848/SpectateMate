@@ -41,6 +41,7 @@ public static class ModEntry
             ChoiceProbe.Install();
             HandStatePatch.Install();
             ShuffleTrailFix.Install();
+            PlayContainerProbe.Install();
             RitsuLibFramework.ApplyRequiredPatcher(patcher, OnRequiredPatchFailed);
 
             RitsuLibFramework.SubscribeLifecycle<RunEndedEvent>(_ => SpectateOverlay.CloseAll());
