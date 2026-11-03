@@ -174,9 +174,34 @@ public static class CardFlight
 
             // 从 holder 里摘出来变成自由节点：否则飞行的 global_position 会被
             // holder 的扇形旋转/缩放反算扭曲，路径不是直线。
-            if (layer != null && GodotObject.IsInstanceValid(layer))
+            //
+            // 优先挂到 NCombatUi 而不是镜像层：
+            // 镜像层的变换是从 CardHolderContainer 复制来的（ApplyLayerBounds），
+            // 那个容器的 Scale / Position 一旦退化（布局未完成、战斗切换中），
+            // 卡片的 global_position 会被整体压塌，最后就停在左上角。
+            // NCombatUi 是全屏容器，坐标系和播放区一致，transform 通常是单位矩阵。
+            Node? host = null;
+
+            try
             {
-                card.Reparent(layer, true);   // keep global transform
+                if (NCombatRoom.Instance?.Ui is { } ui && GodotObject.IsInstanceValid(ui))
+                {
+                    host = ui;
+                }
+            }
+            catch
+            {
+                host = null;
+            }
+
+            if (host == null && layer != null && GodotObject.IsInstanceValid(layer))
+            {
+                host = layer;
+            }
+
+            if (host != null)
+            {
+                card.Reparent(host, true);   // keep global transform
             }
 
             Vector2 playTarget = PlayTargetGlobal(card);
@@ -256,6 +281,31 @@ public static class CardFlight
                 $"[{ModEntry.ModId}] play target: local={local} " +
                 $"container(pos={container.GlobalPosition} size={container.Size} " +
                 $"scale={container.Scale}) card={card.Size}");
+
+            // 卡片实际挂在哪个父节点下、那个父节点的变换是什么，
+            // 决定了 global_position 能不能落到位。
+            try
+            {
+                Node? parent = card.GetParent();
+
+                if (parent is Control pc)
+                {
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] card parent={parent.Name} " +
+                        $"pos={pc.GlobalPosition} size={pc.Size} scale={pc.Scale} " +
+                        $"globalPos={card.GlobalPosition}");
+                }
+                else
+                {
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] card parent={parent?.Name.ToString() ?? "null"} " +
+                        $"({parent?.GetType().Name ?? "-"}) globalPos={card.GlobalPosition}");
+                }
+            }
+            catch
+            {
+                // ignored
+            }
 
             return container.GetGlobalTransform() * local;
         }
