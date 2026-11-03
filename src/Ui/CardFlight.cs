@@ -459,7 +459,12 @@ public static class CardFlight
                 return;
             }
 
-            item.Card.Reparent(container);
+            Vector2 beforeExhaust = item.Card.GlobalPosition;
+            item.Card.Reparent(container, true);
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] exhaust vfx: {item.Model.Id.Entry} " +
+                $"posBefore={beforeExhaust} posAfter={item.Card.GlobalPosition}");
 
             NCardFlyVfx? vfx = NCardFlyVfx.Create(
                 item.Card,
@@ -637,13 +642,19 @@ public static class CardFlight
                 return;
             }
 
-            card.Reparent(container);
+            Vector2 before = card.GlobalPosition;
+
+            // 显式保留全局变换：卡片此刻的位置就是光带的起点，
+            // 一旦被重置成 (0,0)，飞行就会从屏幕左上角开始。
+            card.Reparent(container, true);
 
             string trail = TrailPath(owner) ?? string.Empty;
 
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] fly-from-hand: {model?.Id.Entry} -> {pile} " +
-                $"owner={owner.NetId} spectate={SpectateOverlay.IsOpen} trail={trail}");
+                $"posBefore={before} posAfter={card.GlobalPosition} " +
+                $"parent={card.GetParent()?.Name} " +
+                $"owner={owner.NetId} trail={trail}");
 
             NCardFlyVfx? vfx = NCardFlyVfx.Create(
                 card,
