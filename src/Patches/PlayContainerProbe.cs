@@ -349,6 +349,53 @@ internal static class PlayContainerProbe
     /// reparent 之后立刻记一次，再过 0.35 秒（补间时长 0.25）记一次，
     /// 用来判断补间到底有没有把卡片带到位。
     /// </summary>
+    /// <summary>
+    /// 强制校正：卡片进入播放区后，若最终仍停在原点附近，就把它拉到播放区中央。
+    ///
+    /// 原版补间从「意图栏位置」补到「播放区中心」。当意图栏尚未布局、
+    /// 起点被算成 (0,0) 时，整条弧线都从原点出发；一旦补间被打断
+    /// （reparent、场景切换、快速切换观战目标），卡片就永久留在原点。
+    ///
+    /// 这里在补间时长（0.25s）之后复核一次位置：只要还在原点附近，
+    /// 就直接按播放区的全局变换算出正确落点。
+    /// </summary>
+    private static void CorrectPlayPosition(NCard card)
+    {
+        try
+        {
+            if (card == null || !GodotObject.IsInstanceValid(card))
+            {
+                return;
+            }
+
+            Vector2 g = card.GlobalPosition;
+
+            if (g.Length() > 48f)
+            {
+                return;
+            }
+
+            NCombatUi? ui = NCombatRoom.Instance?.Ui;
+
+            if (ui?.PlayContainer is not { } pc)
+            {
+                return;
+            }
+
+            Vector2 local = PileType.Play.GetTargetPosition(card);
+            Vector2 target = pc.GetGlobalTransform() * local;
+            card.GlobalPosition = target;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] play position CORRECTED: {card.Model?.Id.Entry} " +
+                $"{g} -> {target}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void AddPostfix(NCombatUi __instance, NCard card)
     {
         try
@@ -356,6 +403,15 @@ internal static class PlayContainerProbe
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] add-to-play after: {card.Model?.Id.Entry} " +
                 $"pos={card.Position} global={card.GlobalPosition}");
+
+            // 补间 0.25 秒，这里在 0.4 秒后复核一次最终落点。
+            SceneTree? correctTree = card.GetTree();
+
+            if (correctTree != null)
+            {
+                SceneTreeTimer correctTimer = correctTree.CreateTimer(0.4);
+                correctTimer.Timeout += () => CorrectPlayPosition(card);
+            }
 
             SceneTree? tree = card.GetTree();
 
