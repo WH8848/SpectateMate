@@ -587,7 +587,7 @@ internal static class PlayContainerProbe
     /// 补间正常跑完时位置与目标一致，这里完全不触发；
     /// 只有被打断、仍停在起点附近时才把它挪到落点。
     /// </summary>
-    private static void ScheduleSettle(NCard card)
+    private static void ScheduleSettle(NCard card, int attempt = 0)
     {
         try
         {
@@ -600,13 +600,26 @@ internal static class PlayContainerProbe
 
             string name = card.Model?.Id.Entry ?? "?";
 
-            SceneTreeTimer timer = tree.CreateTimer(0.3);
+            // 首检 0.2 秒：加速模式（0.01s）与快速模式（0.1s）的补间此时已结束。
+            // 普通模式的补间是 0.25 秒，会走「仍在运行」分支再等 0.1 秒。
+            SceneTreeTimer timer = tree.CreateTimer(attempt == 0 ? 0.2f : 0.1f);
             timer.Timeout += () =>
             {
                 try
                 {
                     if (card == null || !GodotObject.IsInstanceValid(card))
                     {
+                        return;
+                    }
+
+                    // 补间还在跑就先别动它，否则会在动画中途把卡片拽到终点。
+                    if (card.PlayPileTween != null && card.PlayPileTween.IsRunning())
+                    {
+                        if (attempt < 2)
+                        {
+                            ScheduleSettle(card, attempt + 1);
+                        }
+
                         return;
                     }
 
@@ -629,7 +642,8 @@ internal static class PlayContainerProbe
                     card.GlobalPosition = target;
 
                     ModEntry.Log.Info(
-                        $"[{ModEntry.ModId}] play settle FIXED: {name} {pos} -> {target}");
+                        $"[{ModEntry.ModId}] play settle FIXED: {name} {pos} -> {target} " +
+                        $"(after {(attempt == 0 ? "0.2" : "0.2+" + (attempt * 0.1).ToString("0.0"))}s)");
                 }
                 catch
                 {
