@@ -514,6 +514,66 @@ internal static class PlayContainerProbe
         }
     }
 
+    /// <summary>
+    /// 停留检测：卡片进入播放区超过 0.1 秒后，记录一次它的实际位置与目标位置。
+    ///
+    /// 用于区分两种截然不同的情况：
+    ///   pos 与 target 接近  -> 补间正常，画面上那张在左上角的牌是别的节点；
+    ///   pos 与 target 差很远 -> 补间确实没跑完，问题就在补间本身。
+    /// </summary>
+    private static void ScheduleDwell(NCard card)
+    {
+        try
+        {
+            SceneTree? tree = card.GetTree();
+
+            if (tree == null)
+            {
+                return;
+            }
+
+            string name = card.Model?.Id.Entry ?? "?";
+
+            SceneTreeTimer timer = tree.CreateTimer(0.1);
+            timer.Timeout += () =>
+            {
+                try
+                {
+                    if (card == null || !GodotObject.IsInstanceValid(card))
+                    {
+                        return;
+                    }
+
+                    NCombatUi? ui = NCombatRoom.Instance?.Ui;
+                    Control? play = ui?.PlayContainer;
+
+                    if (play == null || card.GetParent() != play)
+                    {
+                        return;
+                    }
+
+                    Vector2 local = PileType.Play.GetTargetPosition(card);
+                    Vector2 target = play.GetGlobalTransform() * local;
+                    Vector2 pos = card.GlobalPosition;
+
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] play dwell: {name} pos={pos} target={target} " +
+                        $"delta={(pos - target).Length():0.0} size={card.Size} " +
+                        $"scale={card.Scale} visible={card.Visible} " +
+                        $"tween={(card.PlayPileTween != null && card.PlayPileTween.IsRunning())}");
+                }
+                catch
+                {
+                    // ignored
+                }
+            };
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void AddPrefix(NCombatUi __instance, NCard card)
     {
         try
@@ -543,6 +603,8 @@ internal static class PlayContainerProbe
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] add-to-play after: {card.Model?.Id.Entry} " +
                 $"pos={card.Position} global={card.GlobalPosition}");
+
+            ScheduleDwell(card);
 
             SceneTree? tree = card.GetTree();
 
