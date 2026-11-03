@@ -215,6 +215,22 @@ public static class CardFlight
     /// PileType.Play.GetTargetPosition 返回的是相对 PlayContainer 的局部坐标
     /// （原版会把卡片 reparent 进去），而 Discard 返回全局坐标。这里统一换算。
     /// </summary>
+    /// <summary>
+    /// 播放区的目标点，换到全局坐标。
+    ///
+    /// PileType.Play 返回的是**相对 PlayContainer 的局部坐标**：
+    ///
+    ///     PileType.Play => PlayContainer.Size * 0.5f - node.Size * 0.5f + Vector2.Up * 100f
+    ///
+    /// 原版把卡片 reparent 进 PlayContainer，然后直接 TweenProperty("position", ...)，
+    /// 局部坐标正好对上。我们的卡片挂在镜像层上，用的是 global_position，
+    /// 必须做一次完整变换——之前写成
+    ///     container.GlobalPosition + container.Scale * local
+    /// 漏掉了 Scale 退化的情况：PlayContainer 还没布局完时 Scale 可能是 0，
+    /// 结果直接塌成 (0,0)，卡片就停在左上角了。
+    ///
+    /// ToGlobal 走的是容器的完整 global transform，缩放/旋转/位移都包含在内。
+    /// </summary>
     private static Vector2 PlayTargetGlobal(NCard card, PileType pile = PileType.Play)
     {
         try
@@ -231,7 +247,7 @@ public static class CardFlight
             }
 
             Vector2 local = PileType.Play.GetTargetPosition(card);
-            return container.GlobalPosition + container.Scale * local;
+            return container.GetGlobalTransform() * local;
         }
         catch
         {
