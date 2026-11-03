@@ -677,6 +677,8 @@ internal static class PlayContainerProbe
             ulong start = Godot.Time.GetTicksMsec();
             ulong lastSample = 0;
             int samples = 0;
+            Vector2 lastPos = new(-9999f, -9999f);
+            int frozen = 0;
 
             void Step()
             {
@@ -725,12 +727,37 @@ internal static class PlayContainerProbe
                     Vector2 pos = card.GlobalPosition;
                     Vector2 target = play.GetGlobalTransform()
                         * PileType.Play.GetTargetPosition(card);
+                    float delta = (pos - target).Length();
+
+                    // 连续两次采样位置几乎不动、离目标又很远，说明补间已经停了。
+                    // 这种中断多半来自别的 mod 抛出的异常（日志里见过 NCard 被提前释放，
+                    // 异常打断了消息处理，卡片就固定在半路）。
+                    if ((pos - lastPos).Length() < 5f)
+                    {
+                        frozen++;
+                    }
+                    else
+                    {
+                        frozen = 0;
+                    }
+
+                    lastPos = pos;
 
                     ModEntry.Log.Info(
                         $"[{ModEntry.ModId}] play track t{elapsed}ms: {name} " +
-                        $"pos={pos} target={target} delta={(pos - target).Length():0.0} " +
+                        $"pos={pos} target={target} delta={delta:0.0} " +
                         $"size={card.Size} scale={card.Scale.X:0.00} " +
-                        $"tween={(card.PlayPileTween?.IsRunning() ?? false)}");
+                        $"tween={(card.PlayPileTween?.IsRunning() ?? false)} frozen={frozen}");
+
+                    if (frozen >= 2 && delta > SettleTolerance)
+                    {
+                        card.GlobalPosition = target;
+                        frozen = 0;
+                        lastPos = target;
+
+                        ModEntry.Log.Info(
+                            $"[{ModEntry.ModId}] play track FIXED: {name} {pos} -> {target}");
+                    }
                 }
                 catch
                 {
