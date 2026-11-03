@@ -8,6 +8,8 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using SpectateMate.Ui;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Nodes.Vfx.Cards;
+using System.Reflection;
 
 namespace SpectateMate.Patches;
 
@@ -74,6 +76,53 @@ internal static class PlayContainerProbe
             {
                 _harmony.Patch(flyCreature, prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(FlyPrefix)));
             }
+
+            // 其余卡牌特效：它们的 Create 也都以 NCard 为首参，
+            // 统统一遍，看是谁在播放区那类位置把卡片拿走的。
+            var vfxTypes = new[]
+            {
+                typeof(NCardTransformVfx),
+                typeof(NCardFlyPowerVfx),
+                typeof(NCardExhaustVfx),
+                typeof(NCardExhaustQuickVfx),
+                typeof(NCardRemoveVfx),
+                typeof(NCardUpgradeVfx),
+            };
+
+            int vfxHooked = 0;
+
+            foreach (Type t in vfxTypes)
+            {
+                foreach (System.Reflection.MethodInfo m in t.GetMethods(
+                    System.Reflection.BindingFlags.Public
+                    | System.Reflection.BindingFlags.Static
+                    | System.Reflection.BindingFlags.DeclaredOnly))
+                {
+                    if (m.Name != "Create")
+                    {
+                        continue;
+                    }
+
+                    ParameterInfo[] ps = m.GetParameters();
+
+                    if (ps.Length == 0 || ps[0].ParameterType != typeof(NCard))
+                    {
+                        continue;
+                    }
+
+                    try
+                    {
+                        _harmony.Patch(m, prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(VfxPrefix)));
+                        vfxHooked++;
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+            }
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] vfx probe: hooked {vfxHooked}");
 
             var addPost = AccessTools.Method(typeof(NCombatUi), "AddToPlayContainer");
 
@@ -158,6 +207,30 @@ internal static class PlayContainerProbe
     /// 飞行特效的起点等于 card.GlobalPosition。
     /// 若此刻卡片已经在屏幕中上部，光带就从那里窜出来，看着像「从左上角飞」。
     /// </summary>
+    /// <summary>
+    /// 通用：任何以 NCard 为首参的特效 Create，记录卡片此刻的位置。
+    /// </summary>
+    private static void VfxPrefix(object[] __args, System.Reflection.MethodBase __originalMethod)
+    {
+        try
+        {
+            if (!SpectateOverlay.IsOpen || __args.Length == 0 || __args[0] is not NCard card)
+            {
+                return;
+            }
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] vfx {__originalMethod.DeclaringType?.Name}.Create: " +
+                $"{card.Model?.Id.Entry} global={card.GlobalPosition} local={card.Position} " +
+                $"size={card.Size} scale={card.Scale} " +
+                $"parent={card.GetParent()?.Name.ToString() ?? "null"}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void FlyPrefix(NCard card)
     {
         try
