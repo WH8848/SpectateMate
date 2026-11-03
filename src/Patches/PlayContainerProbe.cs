@@ -832,14 +832,21 @@ internal static class PlayContainerProbe
                         $"size={card.Size} scale={card.Scale.X:0.00} " +
                         $"tween={(card.PlayPileTween?.IsRunning() ?? false)} frozen={frozen}");
 
-                    if (frozen >= 2 && delta > SettleTolerance)
+                    // 原版补间的目标是按当时的 Size 算的。Size 为 0 时会算成
+                    // (960,440)，补间于是持续把卡片往那个位置拉，覆盖掉我们在
+                    // AddToPlayContainer 之后做的纠正。
+                    //
+                    // 所以这里每次采样都拉回正确落点——补间 0.25 秒就结束，
+                    // 之后位置自然稳定。
+                    if (delta > SettleTolerance)
                     {
                         card.GlobalPosition = target;
                         frozen = 0;
                         lastPos = target;
 
                         ModEntry.Log.Info(
-                            $"[{ModEntry.ModId}] play track FIXED: {name} {pos} -> {target}");
+                            $"[{ModEntry.ModId}] play track ALIGN: {name} " +
+                            $"{pos} -> {target} (size={card.Size})");
                     }
                 }
                 catch
