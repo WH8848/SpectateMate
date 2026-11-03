@@ -403,6 +403,7 @@ public static class SpectateOverlay
                 try
                 {
                     SpectateUi.SyncExhaustPileOnly();
+            Patches.PlayContainerProbe.ScanCards();
                 }
                 catch
                 {

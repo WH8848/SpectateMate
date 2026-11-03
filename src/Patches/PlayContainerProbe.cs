@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
+using SpectateMate.Ui;
 
 namespace SpectateMate.Patches;
 
@@ -64,6 +65,69 @@ internal static class PlayContainerProbe
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] play probe failed: {e.Message}");
+        }
+    }
+
+    private static ulong _lastScanMs;
+
+    /// <summary>
+    /// 每 3 秒把屏幕上的每一张 NCard 的位置扫一遍。
+    ///
+    /// 手牌有 STUCK 检测、出牌有 play settle 探针，两边都显示位置正常，
+    /// 但画面上仍有一张牌停在左上角——说明它走的是这两条之外的路。
+    /// 直接全量扫描，找出所有贴在 (0,0) 附近的卡，以及它们的父节点。
+    /// </summary>
+    public static void ScanCards()
+    {
+        try
+        {
+            if (!SpectateOverlay.IsOpen)
+            {
+                return;
+            }
+
+            ulong now = Godot.Time.GetTicksMsec();
+
+            if (now - _lastScanMs < 3000)
+            {
+                return;
+            }
+
+            _lastScanMs = now;
+
+            Node? ui = NCombatRoom.Instance?.Ui;
+
+            if (ui == null)
+            {
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            int count = 0;
+
+            foreach (Node node in ui.FindChildren("*", string.Empty, true, false))
+            {
+                if (node is not NCard card)
+                {
+                    continue;
+                }
+
+                count++;
+
+                Vector2 g = card.GlobalPosition;
+
+                sb.Append(card.Model?.Id.Entry ?? "?")
+                    .Append("@(").Append((int)g.X).Append(',').Append((int)g.Y).Append(')')
+                    .Append('/').Append(card.GetParent()?.Name ?? "?")
+                    .Append(card.Visible ? "" : "(hidden)")
+                    .Append(' ');
+            }
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] card scan({count}): {sb}");
+        }
+        catch
+        {
+            // ignored
         }
     }
 
