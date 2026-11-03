@@ -247,6 +247,16 @@ public static class CardFlight
             }
 
             Vector2 local = PileType.Play.GetTargetPosition(card);
+
+            // 诊断：把容器的实际状态打出来。
+            // PlayContainer 的 Size 在布局完成前可能是 0，
+            // 那样 PileType.Play 算出来的 local 会贴近 (-node.Size/2 + Up*100)，
+            // 换个容器就可能落在左上角。
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] play target: local={local} " +
+                $"container(pos={container.GlobalPosition} size={container.Size} " +
+                $"scale={container.Scale}) card={card.Size}");
+
             return container.GetGlobalTransform() * local;
         }
         catch
