@@ -6,6 +6,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Cards;
+using System.Reflection;
 using SpectateMate.Ui;
 
 namespace SpectateMate.Patches;
@@ -61,7 +62,37 @@ internal static class ExhaustVfxPositionFix
                 prefix: new HarmonyMethod(typeof(ExhaustVfxPositionFix), nameof(Prefix)),
                 postfix: new HarmonyMethod(typeof(ExhaustVfxPositionFix), nameof(Postfix)));
 
-            ModEntry.Log.Info($"[{ModEntry.ModId}] exhaust vfx pos: hooked");
+            // MALAISE 停在 (256,256)/CenterContainer，但没进 NCardExhaustVfx，
+            // 说明它走的是别的特效。把另外两条消耗路径也挂上，无条件记录。
+            var types = new[]
+            {
+                typeof(NCardExhaustQuickVfx),
+                typeof(NCardRemoveVfx),
+            };
+
+            int extra = 0;
+
+            foreach (Type t in types)
+            {
+                var m = AccessTools.Method(t, "Create", new[] { typeof(NCard) });
+
+                if (m == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    _harmony.Patch(m, prefix: new HarmonyMethod(typeof(ExhaustVfxPositionFix), nameof(OtherPrefix)));
+                    extra++;
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
+            ModEntry.Log.Info($"[{ModEntry.ModId}] exhaust vfx pos: hooked (extra={extra})");
         }
         catch (Exception e)
         {
@@ -69,22 +100,30 @@ internal static class ExhaustVfxPositionFix
         }
     }
 
-    private static void Prefix(NCard cardNode, out Vector2 __state)
-    {
-        __state = Vector2.Zero;
+    /// <summary>最近一次 Create 时卡片的位置。用静态字段而不是 __state，
+    /// 避免 Harmony 对 out/ref 值类型参数的兼容差异。</summary>
+    private static Vector2 _incoming;
 
+    private static void Prefix(NCard cardNode)
+    {
         try
         {
-            __state = cardNode?.GlobalPosition ?? Vector2.Zero;
+            _incoming = cardNode?.GlobalPosition ?? Vector2.Zero;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] exhaust vfx pos enter: " +
+                $"{cardNode?.Model?.Id.Entry} at {_incoming} " +
+                $"parent={cardNode?.GetParent()?.Name.ToString() ?? "null"}");
         }
         catch
         {
-            __state = Vector2.Zero;
+            _incoming = Vector2.Zero;
         }
     }
 
-    private static void Postfix(NCardExhaustVfx __result, Vector2 __state)
+    private static void Postfix(NCardExhaustVfx __result)
     {
+        Vector2 __state = _incoming;
         try
         {
             if (__result == null || !GodotObject.IsInstanceValid(__result))
@@ -120,6 +159,27 @@ internal static class ExhaustVfxPositionFix
         catch (Exception e)
         {
             ModEntry.Log.Warn($"[{ModEntry.ModId}] exhaust vfx pos postfix failed: {e.Message}");
+        }
+    }
+
+    /// <summary>其余消耗类特效：只记录，确认谁在处理那张牌。</summary>
+    private static void OtherPrefix(object[] __args, System.Reflection.MethodBase __originalMethod)
+    {
+        try
+        {
+            if (__args.Length == 0 || __args[0] is not NCard card)
+            {
+                return;
+            }
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] vfx enter {__originalMethod.DeclaringType?.Name}.Create: " +
+                $"{card.Model?.Id.Entry} at {card.GlobalPosition} " +
+                $"parent={card.GetParent()?.Name.ToString() ?? "null"}");
+        }
+        catch
+        {
+            // ignored
         }
     }
 
