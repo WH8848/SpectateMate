@@ -726,9 +726,18 @@ internal static class HandMirror
 
             if (destination == PileType.Play)
             {
+                // 出牌动画交给原版。
+                //
+                // 原版在 CardPileCmd 里会把卡片从 holder 里 Reparent 到 PlayContainer
+                // 再播 AnimCardToPlayPile —— 一旦离开我们设成透明的手牌容器，
+                // 它自己就恢复可见了。我们再补一份镜像动画，屏幕上就会出现两份：
+                // 正中间一份（我们的）、别处一份（原版的）。
+                //
+                // 所以这里只回收镜像 holder，不参与动画。
                 ModEntry.Log.Info(
-                    $"[{ModEntry.ModId}] hand -> PLAY: {played.CardNode?.Model?.Id.Entry}");
-                CardFlight.AnimatePlayedCard(played, _layer);
+                    $"[{ModEntry.ModId}] hand -> PLAY (vanilla anim): " +
+                    $"{played.CardNode?.Model?.Id.Entry}");
+                CardFlight.DestroyHolder(played);
             }
             else if (destination == PileType.Exhaust || ethereal)
             {

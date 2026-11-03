@@ -459,12 +459,12 @@ public static class CardFlight
                 return;
             }
 
-            Vector2 beforeExhaust = item.Card.GlobalPosition;
+            Vector2 beforeFly = item.Card.GlobalPosition;
             item.Card.Reparent(container, true);
 
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] exhaust vfx: {item.Model.Id.Entry} " +
-                $"posBefore={beforeExhaust} posAfter={item.Card.GlobalPosition}");
+                $"[{ModEntry.ModId}] fly vfx: {item.Model.Id.Entry} -> {pile} " +
+                $"posBefore={beforeFly} posAfter={item.Card.GlobalPosition}");
 
             NCardFlyVfx? vfx = NCardFlyVfx.Create(
                 item.Card,
