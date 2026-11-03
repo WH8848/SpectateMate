@@ -334,8 +334,19 @@ internal static class PlayContainerProbe
         }
     }
 
+    /// <summary>标准卡牌的尺寸，用于 Size 尚未就绪时估算落点。</summary>
+    private static readonly Vector2 StandardCardSize = new(300f, 422f);
+
     /// <summary>
-    /// 换堆之后的落点记录。只观察，不修改任何位置。
+    /// 换堆之后的处理。
+    ///
+    /// 观战时把进入播放区的卡片直接摆到落点：
+    /// 原版的入场动画是「从 PlayQueue 滑到中央」，
+    /// 起点在 (325, 450) 一带，也就是屏幕上偏左的位置。
+    /// 观战时这个滑入过程没有意义——观众看到的应该是
+    /// 「他打出了一张牌，牌停在中央」，而不是一张牌从左边飘过来。
+    ///
+    /// 补间的起点和终点重合后就不再有位移，卡片直接出现在中央。
     /// </summary>
     private static void MoveNodePostfix(NCard cardNode, PileType newPileType, Vector2 __state)
     {
@@ -350,6 +361,34 @@ internal static class PlayContainerProbe
                 $"[{ModEntry.ModId}] move-node after: {cardNode.Model?.Id.Entry} -> {newPileType} " +
                 $"saved={__state} now={cardNode.GlobalPosition} " +
                 $"parent={cardNode.GetParent()?.Name.ToString() ?? "null"}");
+
+            if (newPileType != PileType.Play || !SpectateOverlay.IsOpen)
+            {
+                return;
+            }
+
+            Control? play = NCombatRoom.Instance?.Ui?.PlayContainer;
+
+            if (play == null || cardNode.GetParent() != play)
+            {
+                return;
+            }
+
+            Vector2 local = PileType.Play.GetTargetPosition(cardNode);
+
+            // Size 还没算出来时公式里的 -node.Size*0.5 等于没减，
+            // 落点会比正常情况偏右下约 (150, 211)，这里补回来。
+            if (cardNode.Size.X < 1f || cardNode.Size.Y < 1f)
+            {
+                local -= StandardCardSize * 0.5f;
+            }
+
+            Vector2 target = play.GetGlobalTransform() * local;
+            cardNode.GlobalPosition = target;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] play instant: {cardNode.Model?.Id.Entry} " +
+                $"{__state} -> {target} (size={cardNode.Size})");
         }
         catch
         {
