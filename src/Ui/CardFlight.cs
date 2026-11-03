@@ -53,16 +53,42 @@ public static class CardFlight
     private static readonly List<NHandCardHolder> Detached = new();
     private static readonly Dictionary<NCard, Tween> FlightTweens = new();
 
-    /// <summary>整体复位，供观战退出/战斗切换时调用。</summary>
+    /// <summary>
+    /// 整体复位，供观战退出 / 战斗切换时调用。
+    ///
+    /// 三个集合都要真正清干净：
+    /// - Detached：仍在 holder 名下、等待回收的空壳
+    /// - Settling：已经 reparent 到 NCombatUi、停在播放区的卡
+    /// - FlightTweens：飞行中的补间
+    ///
+    /// 之前对 Settling 只做了 Clear()，列表空了但卡片本体还挂在场景里。
+    /// 退出观战或快速切换目标时，它就成了屏幕上那张「卡在空中」的牌；
+    /// 而它依赖的父节点被销毁后，global_position 失去参照，
+    /// 又表现为「跑到左上角」。两个现象其实是同一个残留。
+    /// </summary>
     public static void ReleaseAll()
     {
+        // 先处理播放区里的牌：连同卡片本体一起回收。
+        foreach (SettlingCard item in Settling.ToArray())
+        {
+            try
+            {
+                DiscardSettled(item);
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        Settling.Clear();
+
         foreach (NHandCardHolder holder in Detached.ToArray())
         {
             DestroyHolder(holder);
         }
 
         Detached.Clear();
-        Settling.Clear();
         FlightTweens.Clear();
     }
 
