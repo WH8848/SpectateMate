@@ -674,20 +674,40 @@ internal static class PlayContainerProbe
             }
 
             string name = card.Model?.Id.Entry ?? "?";
-            int frames = 0;
-            Vector2 last = new(-9999f, -9999f);
+            ulong start = Godot.Time.GetTicksMsec();
+            ulong lastSample = 0;
+            int samples = 0;
 
             void Step()
             {
                 try
                 {
-                    frames++;
-
-                    if (card == null || !GodotObject.IsInstanceValid(card) || frames > 90)
+                    if (card == null || !GodotObject.IsInstanceValid(card))
                     {
                         tree.ProcessFrame -= Step;
                         return;
                     }
+
+                    ulong now = Godot.Time.GetTicksMsec();
+                    ulong elapsed = now - start;
+
+                    // 采样窗口 2 秒，足以覆盖入场补间和结算停留。
+                    if (elapsed > 2000)
+                    {
+                        tree.ProcessFrame -= Step;
+                        ModEntry.Log.Info(
+                            $"[{ModEntry.ModId}] play track end: {name} " +
+                            $"samples={samples} elapsed={elapsed}ms (timeout)");
+                        return;
+                    }
+
+                    // 每 50 毫秒采样一次。
+                    if (now - lastSample < 50)
+                    {
+                        return;
+                    }
+
+                    lastSample = now;
 
                     Control? play = NCombatRoom.Instance?.Ui?.PlayContainer;
 
@@ -695,27 +715,21 @@ internal static class PlayContainerProbe
                     {
                         tree.ProcessFrame -= Step;
                         ModEntry.Log.Info(
-                            $"[{ModEntry.ModId}] play track end: {name} after {frames} frames");
+                            $"[{ModEntry.ModId}] play track end: {name} " +
+                            $"samples={samples} elapsed={elapsed}ms (left play area)");
                         return;
                     }
+
+                    samples++;
 
                     Vector2 pos = card.GlobalPosition;
-
-                    // 只在位置真正变化时记录，避免刷屏。
-                    if ((pos - last).Length() < 40f && frames > 1)
-                    {
-                        return;
-                    }
-
-                    last = pos;
-
                     Vector2 target = play.GetGlobalTransform()
                         * PileType.Play.GetTargetPosition(card);
 
                     ModEntry.Log.Info(
-                        $"[{ModEntry.ModId}] play track f{frames}: {name} " +
-                        $"pos={pos} target={target} size={card.Size} " +
-                        $"scale={card.Scale.X:0.00} " +
+                        $"[{ModEntry.ModId}] play track t{elapsed}ms: {name} " +
+                        $"pos={pos} target={target} delta={(pos - target).Length():0.0} " +
+                        $"size={card.Size} scale={card.Scale.X:0.00} " +
                         $"tween={(card.PlayPileTween?.IsRunning() ?? false)}");
                 }
                 catch
