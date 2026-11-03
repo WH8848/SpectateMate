@@ -395,6 +395,9 @@ public static class SpectateOverlay
             host.AddChild(_idleRefresh);
             _idleRefresh.Timeout += () =>
             {
+                // 扫描要在观战期间跑：左上角那张卡只在观战时出现。
+                Patches.PlayContainerProbe.ScanCards();
+
                 if (IsOpen)
                 {
                     return;
@@ -403,7 +406,6 @@ public static class SpectateOverlay
                 try
                 {
                     SpectateUi.SyncExhaustPileOnly();
-            Patches.PlayContainerProbe.ScanCards();
                 }
                 catch
                 {
