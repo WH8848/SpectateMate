@@ -267,9 +267,7 @@ internal static class PlayContainerProbe
     }
 
     /// <summary>
-    /// 换堆把卡片移进 PlayContainer 之后，如果它仍贴在原点，
-    /// 说明起点本来就没算出来。此时直接换到屏幕中部偏下，
-    /// 后面 AppendPlayPileLerpTween 就会从正确的位置起步。
+    /// 换堆之后的落点记录。只观察，不修改任何位置。
     /// </summary>
     private static void MoveNodePostfix(NCard cardNode, PileType newPileType, Vector2 __state)
     {
@@ -280,20 +278,15 @@ internal static class PlayContainerProbe
                 return;
             }
 
-            Vector2 g = cardNode.GlobalPosition;
-
-            if (g.Length() > 48f)
+            if (!SpectateOverlay.IsOpen)
             {
                 return;
             }
 
-            Vector2 size = NGame.Instance?.GetViewportRect().Size ?? new Vector2(1920f, 1080f);
-            Vector2 fallback = new(size.X * 0.5f, size.Y * 0.62f);
-            cardNode.GlobalPosition = fallback;
-
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] move-node FIXED: {cardNode.Model?.Id.Entry} " +
-                $"saved={__state} now={g} -> {fallback}");
+                $"[{ModEntry.ModId}] move-node after: {cardNode.Model?.Id.Entry} " +
+                $"saved={__state} now={cardNode.GlobalPosition} " +
+                $"parent={cardNode.GetParent()?.Name.ToString() ?? "null"}");
         }
         catch
         {
@@ -327,32 +320,20 @@ internal static class PlayContainerProbe
     }
 
     /// <summary>
-    /// 兜底：起点落在原点附近说明意图栏还没布局，卡片会从左上角起飞。
-    /// 这种情况下改用屏幕中部偏下作为起点——它至少是玩家能看懂的「从角色那边来」的方向。
+    /// 创建节点后的落点记录。只观察，不修改任何位置。
     /// </summary>
     private static void CreateNodePostfix(NCard __result, bool owningPlayerIsLocal, Vector2 __state)
     {
         try
         {
-            if (__result == null || owningPlayerIsLocal)
+            if (__result == null || owningPlayerIsLocal || !SpectateOverlay.IsOpen)
             {
                 return;
             }
-
-            Vector2 g = __result.GlobalPosition;
-
-            if (g.Length() > 32f)
-            {
-                return;
-            }
-
-            Vector2 size = NGame.Instance?.GetViewportRect().Size ?? new Vector2(1920f, 1080f);
-            Vector2 fallback = new(size.X * 0.5f, size.Y * 0.62f);
-            __result.GlobalPosition = fallback;
 
             ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] create-node FIXED: {__result.Model?.Id.Entry} " +
-                $"{g} -> {fallback} (intent={__state})");
+                $"[{ModEntry.ModId}] create-node after: {__result.Model?.Id.Entry} " +
+                $"global={__result.GlobalPosition} intent={__state}");
         }
         catch
         {
@@ -423,53 +404,6 @@ internal static class PlayContainerProbe
     /// reparent 之后立刻记一次，再过 0.35 秒（补间时长 0.25）记一次，
     /// 用来判断补间到底有没有把卡片带到位。
     /// </summary>
-    /// <summary>
-    /// 强制校正：卡片进入播放区后，若最终仍停在原点附近，就把它拉到播放区中央。
-    ///
-    /// 原版补间从「意图栏位置」补到「播放区中心」。当意图栏尚未布局、
-    /// 起点被算成 (0,0) 时，整条弧线都从原点出发；一旦补间被打断
-    /// （reparent、场景切换、快速切换观战目标），卡片就永久留在原点。
-    ///
-    /// 这里在补间时长（0.25s）之后复核一次位置：只要还在原点附近，
-    /// 就直接按播放区的全局变换算出正确落点。
-    /// </summary>
-    private static void CorrectPlayPosition(NCard card)
-    {
-        try
-        {
-            if (card == null || !GodotObject.IsInstanceValid(card))
-            {
-                return;
-            }
-
-            Vector2 g = card.GlobalPosition;
-
-            if (g.Length() > 48f)
-            {
-                return;
-            }
-
-            NCombatUi? ui = NCombatRoom.Instance?.Ui;
-
-            if (ui?.PlayContainer is not { } pc)
-            {
-                return;
-            }
-
-            Vector2 local = PileType.Play.GetTargetPosition(card);
-            Vector2 target = pc.GetGlobalTransform() * local;
-            card.GlobalPosition = target;
-
-            ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] play position CORRECTED: {card.Model?.Id.Entry} " +
-                $"{g} -> {target}");
-        }
-        catch
-        {
-            // ignored
-        }
-    }
-
     private static void AddPostfix(NCombatUi __instance, NCard card)
     {
         try
@@ -477,15 +411,6 @@ internal static class PlayContainerProbe
             ModEntry.Log.Info(
                 $"[{ModEntry.ModId}] add-to-play after: {card.Model?.Id.Entry} " +
                 $"pos={card.Position} global={card.GlobalPosition}");
-
-            // 补间 0.25 秒，这里在 0.4 秒后复核一次最终落点。
-            SceneTree? correctTree = card.GetTree();
-
-            if (correctTree != null)
-            {
-                SceneTreeTimer correctTimer = correctTree.CreateTimer(0.4);
-                correctTimer.Timeout += () => CorrectPlayPosition(card);
-            }
 
             SceneTree? tree = card.GetTree();
 
