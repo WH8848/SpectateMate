@@ -8,6 +8,8 @@ using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using SpectateMate.Ui;
 using MegaCrit.Sts2.Core.Nodes.Vfx;
+using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.Vfx.Cards;
 using System.Reflection;
 
@@ -124,6 +126,24 @@ internal static class PlayContainerProbe
 
             ModEntry.Log.Info($"[{ModEntry.ModId}] vfx probe: hooked {vfxHooked}");
 
+            // 远程玩家卡片的起点由 CreateCardNodeAndUpdateVisuals 决定：
+            //     nCard.Position = GetCreatureNode(card.Owner.Creature).IntentContainer.GlobalPosition;
+            // 意图栏尚未布局时该值可能是 (0,0)，卡片就从左上角出发。
+            var createNode = AccessTools.Method(
+                typeof(CardPileCmd),
+                "CreateCardNodeAndUpdateVisuals",
+                new[] { typeof(CardModel), typeof(PileType?), typeof(PileType), typeof(bool) });
+
+            if (createNode != null)
+            {
+                _harmony.Patch(
+                    createNode,
+                    prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(CreateNodePrefix)),
+                    postfix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(CreateNodePostfix)));
+
+                ModEntry.Log.Info($"[{ModEntry.ModId}] create-node probe: hooked");
+            }
+
             var addPost = AccessTools.Method(typeof(NCombatUi), "AddToPlayContainer");
 
             if (addPost != null)
@@ -207,6 +227,65 @@ internal static class PlayContainerProbe
     /// <summary>
     /// 通用：任何以 NCard 为首参的特效 Create，记录卡片此刻的位置。
     /// </summary>
+    private static void CreateNodePrefix(CardModel card, bool owningPlayerIsLocal, ref Vector2 __state)
+    {
+        __state = Vector2.Zero;
+
+        try
+        {
+            if (owningPlayerIsLocal)
+            {
+                return;
+            }
+
+            Node? creature = NCombatRoom.Instance?.GetCreatureNode(card.Owner?.Creature!);
+            Control? intent = creature is NCreature nc ? nc.IntentContainer : null;
+            __state = intent?.GlobalPosition ?? Vector2.Zero;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] create-node: {card.Id.Entry} local={owningPlayerIsLocal} " +
+                $"creature={(creature != null)} intent={(__state)} intentSize={intent?.Size}");
+        }
+        catch (Exception e)
+        {
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] create-node prefix failed: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 兜底：起点落在原点附近说明意图栏还没布局，卡片会从左上角起飞。
+    /// 这种情况下改用屏幕中部偏下作为起点——它至少是玩家能看懂的「从角色那边来」的方向。
+    /// </summary>
+    private static void CreateNodePostfix(NCard __result, bool owningPlayerIsLocal, Vector2 __state)
+    {
+        try
+        {
+            if (__result == null || owningPlayerIsLocal)
+            {
+                return;
+            }
+
+            Vector2 g = __result.GlobalPosition;
+
+            if (g.Length() > 32f)
+            {
+                return;
+            }
+
+            Vector2 size = NGame.Instance?.GetViewportRect().Size ?? new Vector2(1920f, 1080f);
+            Vector2 fallback = new(size.X * 0.5f, size.Y * 0.62f);
+            __result.GlobalPosition = fallback;
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] create-node FIXED: {__result.Model?.Id.Entry} " +
+                $"{g} -> {fallback} (intent={__state})");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
     private static void VfxPrefix(object[] __args, System.Reflection.MethodBase __originalMethod)
     {
         try
