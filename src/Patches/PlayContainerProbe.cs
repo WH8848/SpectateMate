@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using SpectateMate.Ui;
+using MegaCrit.Sts2.Core.Nodes.Vfx;
 
 namespace SpectateMate.Patches;
 
@@ -50,6 +51,28 @@ internal static class PlayContainerProbe
             if (lerp != null)
             {
                 _harmony.Patch(lerp, prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(LerpPrefix)));
+            }
+
+            // NCardFlyVfx 的两个 Create 重载：起点都来自 card.GlobalPosition，
+            // 这里把它、局部位置和父节点一起记下来。
+            var flyPile = AccessTools.Method(
+                typeof(NCardFlyVfx),
+                "Create",
+                new[] { typeof(NCard), typeof(PileType), typeof(bool), typeof(string) });
+
+            if (flyPile != null)
+            {
+                _harmony.Patch(flyPile, prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(FlyPrefix)));
+            }
+
+            var flyCreature = AccessTools.Method(
+                typeof(NCardFlyVfx),
+                "Create",
+                new[] { typeof(NCard), typeof(MegaCrit.Sts2.Core.Entities.Creatures.Creature), typeof(string) });
+
+            if (flyCreature != null)
+            {
+                _harmony.Patch(flyCreature, prefix: new HarmonyMethod(typeof(PlayContainerProbe), nameof(FlyPrefix)));
             }
 
             var addPost = AccessTools.Method(typeof(NCombatUi), "AddToPlayContainer");
@@ -124,6 +147,30 @@ internal static class PlayContainerProbe
             }
 
             ModEntry.Log.Info($"[{ModEntry.ModId}] card scan({count}): {sb}");
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    /// <summary>
+    /// 飞行特效的起点等于 card.GlobalPosition。
+    /// 若此刻卡片已经在屏幕中上部，光带就从那里窜出来，看着像「从左上角飞」。
+    /// </summary>
+    private static void FlyPrefix(NCard card)
+    {
+        try
+        {
+            if (!SpectateOverlay.IsOpen)
+            {
+                return;
+            }
+
+            ModEntry.Log.Info(
+                $"[{ModEntry.ModId}] fly create: {card.Model?.Id.Entry} " +
+                $"global={card.GlobalPosition} local={card.Position} size={card.Size} " +
+                $"parent={card.GetParent()?.Name.ToString() ?? "null"}");
         }
         catch
         {
