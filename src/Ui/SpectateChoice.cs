@@ -555,12 +555,23 @@ public static class SpectateChoice
     }
 
     /// <summary>
-    /// 退出观战：只恢复视觉，保留「他还在选」这个事实。
-    /// 他可能一直停在弃牌/烧牌的选择页面没动，重新观战时要能立刻再看到。
+    /// 退出观战：连同选择模式一起清掉。
+    ///
+    /// 之前这里用 clearMode: false，想保留「他还在选」这个事实，
+    /// 重新观战就能立刻显示。但那留下了一个隐患：
+    /// mode 还在、界面却已经被移除，重新进入观战时 Tick 会立刻按旧 mode
+    /// 重建界面——而那一刻候选牌往往还没同步过来，于是建出一个
+    /// cards=0、visible=true 的空覆盖层。
+    ///
+    /// 日志里能看到退出后马上又进入观战（apply target=null 后接
+    /// apply target=<队友>），每次都会重建一个空界面，屏幕上就多一层
+    /// 看不见内容的遮挡，本地玩家自己的选牌因此点不到。
+    ///
+    /// 改成清空：重新观战时如果对方确实还在选，Tick 会在下一拍重新识别出来。
     /// </summary>
     public static void Reset()
     {
-        Close(clearMode: false);
+        Close(clearMode: true);
         HandMirror.ResetSelectionUi();
         HandMirror.ClearHandSelection();
     }
