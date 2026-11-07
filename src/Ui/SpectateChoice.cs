@@ -330,20 +330,47 @@ public static class SpectateChoice
 
             _hoverId = null;
 
-            DisableInput(_screen as Node, logCount: true);
+            Node? root = _screen as Node;
+
+            // 整个界面是只读的，根节点不该吃鼠标事件。
+            // 关键点：Modulate.A = 0 只影响绘制，不影响 MouseFilter。
+            // 一层完全透明的界面照样会拦截点击——之前"选不了牌"就是这么来的。
+            if (root is Control rootControl)
+            {
+                rootControl.MouseFilter = Control.MouseFilterEnum.Ignore;
+            }
+
+            DisableInput(root, logCount: true);
             ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: {_mode} ({DescribeCount()})");
 
-            // 诊断：界面建出来了但卡片是空的，需要区分「没填充」和「填充了但不可见」。
-            Node? probeRoot = _screen as Node;
-            if (probeRoot != null)
+            // 建完之后一张卡都没有，说明候选牌还没同步过来。
+            // 这种空界面不提供任何信息，却会留下一个能挡点击的覆盖层，
+            // 直接销毁，等下一拍数据齐了再建。
+            int shownCards = root?.FindChildren("*", nameof(NCard), true, false).Count ?? 0;
+
+            if (shownCards == 0)
             {
-                int cards = probeRoot.FindChildren("*", nameof(NCard), true, false).Count;
-                int holders = probeRoot.FindChildren("*", nameof(NCardHolder), true, false).Count;
-                bool visible = probeRoot is CanvasItem ci && ci.Visible;
-                Color mod = probeRoot is CanvasItem ci2 ? ci2.Modulate : Colors.White;
-                ModEntry.Log.Info(
-                    $"[{ModEntry.ModId}] choice peek: cards={cards} holders={holders} " +
-                    $"visible={visible} modulate={mod}");
+                ModEntry.Log.Info($"[{ModEntry.ModId}] choice peek: no cards yet, deferred");
+
+                try
+                {
+                    if (_screen is GodotObject obj && GodotObject.IsInstanceValid(obj))
+                    {
+                        NOverlayStack.Instance?.Remove(_screen);
+                    }
+
+                    if (root is Control empty)
+                    {
+                        empty.Visible = false;
+                        empty.QueueFree();
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                _screen = null;
             }
         }
         catch (Exception e)
