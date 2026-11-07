@@ -68,7 +68,19 @@ public static class VanillaHandVisibility
         container.Modulate = new Color(_saved.R, _saved.G, _saved.B, 0f);
     }
 
-    /// <summary>恢复容器原本的透明度。</summary>
+    /// <summary>
+    /// 恢复容器原本的透明度。
+    ///
+    /// 不能只看 _hidden。ForgetState 会把标志清成 false 却不碰节点，
+    /// 于是会出现「标志已清、容器仍然透明」的中间态：
+    ///
+    ///   观战 Hide()            -> 容器 alpha=0，_hidden=true
+    ///   手牌节点失效 ForgetState() -> _hidden=false，容器还是 alpha=0
+    ///   退出观战 Show()         -> 看到 _hidden 为 false，什么都不做
+    ///
+    /// 结果原生手牌永远透明——看不见也点不到，战斗中的选牌（要从手牌里点）
+    /// 就完全没法操作。所以这里以容器的实际透明度为准，标志只作辅助。
+    /// </summary>
     public static void Show(NPlayerHand? hand)
     {
         Control? container = Resolve(hand);
@@ -77,11 +89,13 @@ public static class VanillaHandVisibility
             return;
         }
 
-        if (_hidden)
+        if (!_hidden && container.Modulate.A > 0f)
         {
-            container.Modulate = _saved;
-            _hidden = false;
+            return;
         }
+
+        container.Modulate = _saved.A > 0f ? _saved : Colors.White;
+        _hidden = false;
     }
 
     /// <summary>
