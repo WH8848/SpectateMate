@@ -385,7 +385,31 @@ public static class SpectateChoice
         switch (_mode)
         {
             case Mode.ChooseACard when _cards != null && _cards.Count > 0:
-                return NChooseACardSelectionScreen.ShowScreen(_cards, _canSkip);
+            {
+                NChooseACardSelectionScreen? discover = NChooseACardSelectionScreen.ShowScreen(_cards, _canSkip);
+
+                // 同 CombatPile：ShowScreen 内部就把界面压进了覆盖层栈，
+                // 一旦它没能建出任何卡片节点，就必须立刻撤掉，
+                // 否则会隐藏下层界面并接管输入。
+                if (discover == null)
+                {
+                    return null;
+                }
+
+                int built = ((Node)discover).FindChildren("*", nameof(NCard), true, false).Count;
+
+                if (built == 0)
+                {
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] choice peek: discover screen has no cards, not pushed");
+
+                    NOverlayStack.Instance?.Remove(discover);
+                    ((Node)discover).QueueFree();
+                    return null;
+                }
+
+                return discover;
+            }
 
             case Mode.CombatPile when _pile != null && _prefs != null:
             {
@@ -399,6 +423,25 @@ public static class SpectateChoice
                 }
 
                 NCombatPileCardSelectScreen screen = NCombatPileCardSelectScreen.Create(_pile, _prefs.Value, _filter);
+
+                // 建完先确认里面真有卡片节点，再决定要不要入栈。
+                //
+                // Push 会把下层界面 AfterOverlayHidden 掉，并把 _backstop 的
+                // MouseFilter 设成 Stop。一个没有内容的层一旦入栈，就同时
+                // 做到了两件事：藏起下面的原生界面、接管全部输入。
+                // 之后只要销毁路径有一点闪失，玩家就会面对一个看不见、
+                // 点不动的屏幕——这正是「战斗结束选不了卡牌奖励」的形态。
+                int built = screen.FindChildren("*", nameof(NCard), true, false).Count;
+
+                if (built == 0)
+                {
+                    ModEntry.Log.Info(
+                        $"[{ModEntry.ModId}] choice peek: pile screen has no cards, not pushed");
+
+                    screen.QueueFree();
+                    return null;
+                }
+
                 NOverlayStack.Instance?.Push(screen);
                 return screen;
             }
