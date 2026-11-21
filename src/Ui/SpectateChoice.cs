@@ -5,6 +5,7 @@ using MegaCrit.Sts2.Core.CardSelection;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Multiplayer;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.GameActions.Multiplayer;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -52,7 +53,7 @@ public static class SpectateChoice
     private static Player? _handOwner;
     // 上一拍是否还处于选择模式的视觉状态，用于触发一次收尾清理。
     private static bool _handVisualActive;
-    private static bool _subscribed;
+    private static PlayerChoiceSynchronizer? _subscribedSynchronizer;
 
     public static void RememberChooseACard(IReadOnlyList<CardModel> cards, bool canSkip, Player player)
     {
@@ -112,15 +113,22 @@ public static class SpectateChoice
     /// </summary>
     private static void EnsureSubscribed()
     {
-        if (_subscribed)
-        {
-            return;
-        }
-
         try
         {
-            RunManager.Instance.PlayerChoiceSynchronizer.PlayerChoiceReceived += OnRemoteChoiceReceived;
-            _subscribed = true;
+            PlayerChoiceSynchronizer synchronizer = RunManager.Instance.PlayerChoiceSynchronizer;
+
+            if (ReferenceEquals(_subscribedSynchronizer, synchronizer))
+            {
+                return;
+            }
+
+            if (_subscribedSynchronizer != null)
+            {
+                _subscribedSynchronizer.PlayerChoiceReceived -= OnRemoteChoiceReceived;
+            }
+
+            synchronizer.PlayerChoiceReceived += OnRemoteChoiceReceived;
+            _subscribedSynchronizer = synchronizer;
         }
         catch (Exception e)
         {
@@ -302,6 +310,7 @@ public static class SpectateChoice
     /// <summary>战斗结束时清空全部选牌状态。</summary>
     public static void ResetAll()
     {
+        ResetHandSelectionState();
         Close();
 
         _mode = Mode.None;
@@ -641,8 +650,17 @@ public static class SpectateChoice
     /// </summary>
     public static void Reset()
     {
+        ResetHandSelectionState();
         Close(clearMode: true);
         HandMirror.ResetSelectionUi();
         HandMirror.ClearHandSelection();
+    }
+
+    private static void ResetHandSelectionState()
+    {
+        _handSelecting = false;
+        _handFilter = null;
+        _handOwner = null;
+        _handVisualActive = false;
     }
 }

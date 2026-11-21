@@ -172,9 +172,6 @@ internal static class SpectateUi
             return;
         }
 
-        _applied = true;
-        _appliedNetId = targetId;
-
         // Takes over vanilla widgets; a failure here must NEVER break the overlay.
         try
         {
@@ -202,9 +199,13 @@ internal static class SpectateUi
                 $"netService={localId} shown={shown.NetId}");
 
             DisplayedPlayer.With(shown, () => Rebuild(shown));
+            _applied = true;
+            _appliedNetId = targetId;
         }
         catch (Exception e)
         {
+            _applied = false;
+            _appliedNetId = null;
             ModEntry.Log.Warn($"[{ModEntry.ModId}] ui takeover skipped: {e.GetType().Name}: {e.Message}");
         }
     }
