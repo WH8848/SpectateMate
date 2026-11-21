@@ -84,6 +84,26 @@ internal static class HandMirror
     public static IReadOnlyList<NHandCardHolder> MirrorHolders =>
         _active && Holders.Count > 0 ? Holders : Array.Empty<NHandCardHolder>();
 
+    public static void RemovePlayedCard(CardModel? model)
+    {
+        if (!_active || model == null)
+        {
+            return;
+        }
+
+        int index = Holders.FindIndex(holder =>
+            GodotObject.IsInstanceValid(holder) && ReferenceEquals(holder.CardNode?.Model, model));
+        if (index < 0)
+        {
+            return;
+        }
+
+        NHandCardHolder holder = Holders[index];
+        Holders.RemoveAt(index);
+        CardFlight.DestroyHolder(holder);
+        _key = string.Empty;
+    }
+
     // FocusedHolder 是自动属性（public NHandCardHolder? FocusedHolder { get; private set; }）。
     //
     // 之前按 backing field 反射（<FocusedHolder>k__BackingField），虽然名字是对的，

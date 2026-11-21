@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.Capstones;
 using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Runs;
+using SpectateMate.Patches;
 
 namespace SpectateMate.Ui;
 
@@ -242,6 +243,7 @@ public static class SpectateOverlay
             SpectateUi.Apply(player);
             SpectateUi.SetInteraction(false);
             Refresh();
+            PlayTargetPositionFix.CenterCardsAtVanillaLanding();
             ModEntry.Log.Info($"[{ModEntry.ModId}] spectating netId={player.NetId}");
         }
         catch (Exception e)
