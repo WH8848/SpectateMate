@@ -32,31 +32,8 @@ internal sealed class ActiveHoldersPatch : IPatchMethod
 
     public static bool Prefix(ref IReadOnlyList<NHandCardHolder> __result)
     {
-        if (!HandMirror.IsShowing)
-        {
-            return true;
-        }
-
-        // 自检：观战窗口已经关闭却还在劫持 ActiveHolders。
-        //
-        // 注意不能用 DisplayedPlayer.IsActive —— 那个标志只在补丁的
-        // Prefix → Finalizer 期间为 true（即重定向生效的那几毫秒）。
-        // 用它判断会导致：正在观战时每拍都被判成「泄漏」并 ForceHide，
-        // 下一拍 Rebuild 又把 _active 设回 true，形成死循环，
-        // 表现为 hand mirror leak detected 刷屏、手牌反复隐藏与恢复。
-        if (!SpectateOverlay.IsOpen)
-        {
-            HandMirror.ForceHide();
-            return true;
-        }
-
-        IReadOnlyList<NHandCardHolder> mirrors = HandMirror.MirrorHolders;
-        if (mirrors.Count == 0)
-        {
-            return true;
-        }
-
-        __result = mirrors;
-        return false;
+        // 镜像手牌有自己的布局控制器。让原生 NPlayerHand 继续返回本地
+        // holders，避免本地事件、拖拽和选择模式把镜像 holders 一起重排。
+        return true;
     }
 }

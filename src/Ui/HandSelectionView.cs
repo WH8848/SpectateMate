@@ -68,7 +68,7 @@ public static class HandSelectionView
 
             if (changed && hand != null && GodotObject.IsInstanceValid(hand))
             {
-                hand.ForceRefreshCardIndices();
+                HandMirror.RefreshLayout();
             }
         }
         catch (Exception e)

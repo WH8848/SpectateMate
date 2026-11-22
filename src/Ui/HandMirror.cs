@@ -74,6 +74,7 @@ internal static class HandMirror
     private static StringName _key = string.Empty;
     private static bool _active;
     private static string _lastDiag = string.Empty;
+    private static NHandCardHolder? _focusedHolder;
 
     public static bool IsShowing => _active;
 
@@ -83,6 +84,51 @@ internal static class HandMirror
     /// </summary>
     public static IReadOnlyList<NHandCardHolder> MirrorHolders =>
         _active && Holders.Count > 0 ? Holders : Array.Empty<NHandCardHolder>();
+
+    public static void RefreshLayout()
+    {
+        if (!_active || Holders.Count == 0)
+        {
+            return;
+        }
+
+        int count = Holders.Count;
+        int focusedIndex = _focusedHolder != null ? Holders.IndexOf(_focusedHolder) : -1;
+        Vector2 scale = HandPosHelper.GetScale(count);
+
+        for (int i = 0; i < count; i++)
+        {
+            NHandCardHolder holder = Holders[i];
+            if (holder == null || !GodotObject.IsInstanceValid(holder))
+            {
+                continue;
+            }
+
+            Vector2 position = HandPosHelper.GetPosition(count, i);
+            if (focusedIndex >= 0)
+            {
+                float amount = Mathf.Lerp(100f, 0f, Mathf.Min(1f, Mathf.Abs(focusedIndex - i) / 4f));
+                position += Vector2.Left * Mathf.Sign(focusedIndex - i) * amount;
+            }
+
+            if (i == focusedIndex)
+            {
+                holder.SetAngleInstantly(0f);
+                holder.SetScaleInstantly(Vector2.One);
+                position.Y = -holder.Hitbox.Size.Y * 0.5f + 2f;
+                holder.Position = new Vector2(holder.Position.X, position.Y);
+            }
+            else
+            {
+                holder.SetTargetScale(scale);
+                holder.SetTargetAngle(HandPosHelper.GetAngle(count, i));
+            }
+
+            holder.SetTargetPosition(position);
+            holder.Hitbox.MouseFilter = Control.MouseFilterEnum.Stop;
+            holder.SetIndexLabel(i + 1);
+        }
+    }
 
     public static void RemovePlayedCard(CardModel? model)
     {
@@ -295,6 +341,7 @@ internal static class HandMirror
                     _lastEnergy = int.MinValue;
 
                     Holders.Clear();
+                    _focusedHolder = null;
                     CardFlight.ReleaseAll();
                 }
 
@@ -539,6 +586,7 @@ internal static class HandMirror
         // 一旦中途失败，_active 会停在 true，泄漏自检就会每拍反复触发、
         // 反复调用 Hide，形成死循环（日志里那句 leak detected 刷屏）。
         _active = false;
+        _focusedHolder = null;
         _key = string.Empty;
         _hoverId = null;
         _lastEnergy = int.MinValue;
@@ -809,7 +857,7 @@ internal static class HandMirror
                 }
             }
 
-            NHandCardHolder? focused = GetFocused(hand);
+            NHandCardHolder? focused = _focusedHolder;
             int focusIdx = focused != null && Holders.Contains(focused)
                 ? Holders.IndexOf(focused)
                 : -1;
@@ -818,19 +866,13 @@ internal static class HandMirror
                 $"[{ModEntry.ModId}] layout: count={Holders.Count} focus={focusIdx} " +
                 $"cards=[{ids}]");
 
-            // ActiveHolders 实际返回什么，RefreshLayout 就用什么算间距。
-            var active = hand.ActiveHolders;
-            ModEntry.Log.Info(
-                $"[{ModEntry.ModId}] activeHolders={active.Count} " +
-                $"(mirror={Holders.Count})");
         }
         catch
         {
             // ignored
         }
 
-        // 交给原版 RefreshLayout 重新排版（扇形、悬停抬起、相邻让位、焦点）。
-        hand.ForceRefreshCardIndices();
+        RefreshLayout();
 
         // 排版之后再打印位置：排版前 TargetPosition 还是上一次的值（甚至是 0,0），
         // 拿那个快照判断目标是否正确会得出完全错误的结论。
@@ -1093,70 +1135,20 @@ internal static class HandMirror
     {
         try
         {
-            NPlayerHand? hand = _lastHand;
-            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            if (_focusedHolder == null || !GodotObject.IsInstanceValid(_focusedHolder))
+            {
+                _focusedHolder = null;
+                return;
+            }
+
+            Vector2 mouse = _focusedHolder.GetViewport().GetMousePosition();
+            if (_focusedHolder.Hitbox.GetGlobalRect().HasPoint(mouse))
             {
                 return;
             }
 
-            // 两个残留源都要查。
-            //
-            // FocusedHolder 为 null 不代表干净：_lastFocusedHolderIdx 可能还留着
-            // 上一次的下标，而 NPlayerHand 有地方会拿它做默认焦点回退。
-            // 之前这里一看到焦点为 null 就返回，那个下标永远不会被清——
-            // 于是某个固定位置（比如中间那张）一直被当成焦点抬着。
-            NHandCardHolder? focused = GetFocused(hand);
-            int lastIdx = ReadLastFocusedIdx(hand);
-
-            if (focused == null && lastIdx < 0)
-            {
-                return;
-            }
-
-            // 判断依据改成「鼠标是否落在任意一张镜像牌上」。
-            //
-            // 只看焦点牌会漏掉一种情况：鼠标从 A 牌直接滑到 B 牌时，
-            // A 的 Unfocused 可能先于 B 的 Focused 到达，或者干脆不来。
-            // 只要鼠标还在牌堆范围内，就说明是正常悬停，交给信号处理；
-            // 鼠标离开整个手牌区才算残留，这时才清。
-            try
-            {
-                if (focused == null || !GodotObject.IsInstanceValid(focused))
-                {
-                    // 没有焦点对象但有残留下标，直接走清理。
-                    SetFocused(hand, null);
-                    LastFocusedIdxField?.SetValue(hand, -1);
-                    ModEntry.Log.Info(
-                        $"[{ModEntry.ModId}] cleared stale focus index ({lastIdx})");
-                    hand.ForceRefreshCardIndices();
-                    return;
-                }
-
-                Vector2 mouse = focused.GetViewport().GetMousePosition();
-
-                foreach (NHandCardHolder candidate in Holders)
-                {
-                    if (candidate == null || !GodotObject.IsInstanceValid(candidate))
-                    {
-                        continue;
-                    }
-
-                    if (candidate.Hitbox.GetGlobalRect().HasPoint(mouse))
-                    {
-                        return;
-                    }
-                }
-            }
-            catch
-            {
-                // 拿不到鼠标位置就按残留处理
-            }
-
-            SetFocused(hand, null);
-            LastFocusedIdxField?.SetValue(hand, -1);
-
-            ModEntry.Log.Info($"[{ModEntry.ModId}] cleared stale focus");
-            hand.ForceRefreshCardIndices();
+            _focusedHolder = null;
+            RefreshLayout();
         }
         catch
         {
@@ -1180,16 +1172,18 @@ internal static class HandMirror
     {
         try
         {
-            NPlayerHand? hand = _lastHand;
-            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            if (!GodotObject.IsInstanceValid(holder) || Holders.IndexOf(holder) < 0)
             {
                 return;
             }
 
-            int index = Holders.IndexOf(holder);
-            SetFocused(hand, holder);
-            LastFocusedIdxField?.SetValue(hand, index);
-            hand.ForceRefreshCardIndices();
+            if (_focusedHolder == holder)
+            {
+                return;
+            }
+
+            _focusedHolder = holder;
+            RefreshLayout();
         }
         catch
         {
@@ -1201,14 +1195,13 @@ internal static class HandMirror
     {
         try
         {
-            NPlayerHand? hand = _lastHand;
-            if (hand == null || !GodotObject.IsInstanceValid(hand))
+            if (_focusedHolder != holder)
             {
                 return;
             }
 
-            // 重排一次，把抬起的偏移还原。
-            hand.ForceRefreshCardIndices();
+            _focusedHolder = null;
+            RefreshLayout();
         }
         catch
         {
