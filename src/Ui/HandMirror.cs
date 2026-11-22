@@ -1125,30 +1125,42 @@ internal static class HandMirror
     /// <summary>
     /// 清掉失效的焦点。
     ///
-    /// RefreshLayout 会特殊对待 FocusedHolder：把它抬高、放大到 1.0，
-    /// 并让左右邻居让位。鼠标离开时本应由 OnHolderUnfocused 复位，
-    /// 但 holder 被销毁、鼠标移出窗口、观战切换等情况下这个回调不会来，
-    /// 焦点就永久停在某张牌上——表现出来就是「那张牌一直翘着，
-    /// 两边的牌挤在一起」，也就是洗牌/发牌后看到的位置错乱。
+    /// 只在「holder 已不可用」时动手，绝不判断鼠标位置。
+    ///
+    /// 原版焦点由 NClickableControl.RefreshFocus 驱动：
+    ///     flag = enabled && IsVisibleInTree() && (_isHovered || _isControllerFocused)
+    /// 而 _isHovered 来自 Control.MouseEntered / MouseExited 信号，
+    /// 鼠标离开一定会发 Unfocused -> OnHolderUnfocused。所以「鼠标移开」这件事
+    /// 本来就有可靠的通知，不需要轮询。
+    ///
+    /// 之前这里用 Hitbox.GetGlobalRect().HasPoint(mouse) 轮询，会踩到这个时序：
+    ///   1. 鼠标进入 -> 焦点确立 -> RefreshLayout 把卡片抬高约 Hitbox.Size.Y/2
+    ///   2. 卡片正在上移，50ms 后轮询时矩形已经上去了
+    ///   3. 鼠标若停在下半部分，就落到矩形外 -> 判定「已离开」-> 清焦点 -> 牌落回去
+    ///   4. 落回后鼠标又在牌上 -> 再次 Focused -> 回到第 1 步
+    /// 结果就是玩家反馈的「鼠标悬停时牌一直滑下去、保持不住」。
     /// </summary>
     private static void PruneStaleFocus()
     {
         try
         {
-            if (_focusedHolder == null || !GodotObject.IsInstanceValid(_focusedHolder))
+            if (_focusedHolder == null)
+            {
+                return;
+            }
+
+            if (!GodotObject.IsInstanceValid(_focusedHolder))
             {
                 _focusedHolder = null;
                 return;
             }
 
-            Vector2 mouse = _focusedHolder.GetViewport().GetMousePosition();
-            if (_focusedHolder.Hitbox.GetGlobalRect().HasPoint(mouse))
+            // holder 被移除但信号没来（重建、切换目标）时兜底一次。
+            if (!Holders.Contains(_focusedHolder))
             {
-                return;
+                _focusedHolder = null;
+                RefreshLayout();
             }
-
-            _focusedHolder = null;
-            RefreshLayout();
         }
         catch
         {
