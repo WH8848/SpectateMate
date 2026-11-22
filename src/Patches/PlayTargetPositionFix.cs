@@ -1,170 +1,161 @@
-using System.Reflection.Emit;
+using System;
 using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
-using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
-using MegaCrit.Sts2.Core.Nodes.Multiplayer;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using SpectateMate.Ui;
 
 namespace SpectateMate.Patches;
 
+/// <summary>
+/// 观战时打出牌的落点修正。整个文件只做两件事，都直接写位置，不依赖时间、不依赖补间存活。
+///
+/// 背景：原版算落点用
+///     PlayContainer.Size * 0.5f - node.Size * 0.5f + Vector2.Up * 100f
+/// 其中 - node.Size * 0.5f 把「容器中心」换算成「卡片左上角」。但 NCard.UpdateVisuals
+/// 开头有 if (!IsNodeReady()) return;，而原版创建卡片是「先 AddChild 再 UpdateVisuals」，
+/// 所以 Size 经常还是 (0,0)，这一项等于没减，落点在 (960,440) 与 (810,229) 之间跳变。
+/// 观战画面里正确的是 (960,440)。
+///
+/// 这里只保留两处介入：
+///   1. GetTargetPosition 的 postfix —— 让所有调用方（入场补间、飞行特效、消耗特效）
+///      拿到的都是同一个正确值；
+///   2. AppendPlayPileLerpTween 的 prefix —— 补间开始前先把卡片摆到落点，
+///      于是补间起点等于终点，不会从队列位置滑过来，也就不会出现「停在半路」。
+///
+/// 曾经有过、现已删除的做法（都不可靠）：
+///   - 给 PlayPileTween 挂 TweenMethod 每帧写位置：补间被 Kill 时它一起死，
+///     卡片就停在当时算出的坐标上——这正是「落点不稳定」的来源；
+///   - transpiler 改写 BeforeActionPausedForPlayerChoice 的 IL：游戏一更新方法体
+///     就会在运行时抛异常，影响的是游戏本身的选牌暂停逻辑；
+///   - 按 0.25 / 0.2 秒的硬编码时长做延迟校正：FastMode 下原版补间只有 0.01~0.1 秒；
+///   - 进入观战时批量扫描播放区、把「看起来停在原版落点」的牌搬到中心：
+///     判断依据是位置约等于某个值，而 Size 为 0 时这个判断会退化成恒真。
+/// </summary>
 internal static class PlayTargetPositionFix
 {
-    private const double PlayEntrySeconds = 0.25;
-    private const double ChoiceReturnSeconds = 0.2;
-
     public static void Install()
     {
         try
         {
             var harmony = new Harmony($"{ModEntry.ModId}.playtarget");
-            harmony.Patch(
-                AccessTools.DeclaredMethod(typeof(PileTypeExtensions), nameof(PileTypeExtensions.GetTargetPosition)),
-                postfix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(AdjustTargetPosition)));
-            harmony.Patch(
-                AccessTools.DeclaredMethod(typeof(CardPileCmd), "AppendPlayPileLerpTween"),
-                prefix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(PlaceBeforePlayTween)),
-                postfix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(FollowSpectateDuringPlayTween)));
-            harmony.Patch(
-                AccessTools.DeclaredMethod(typeof(NCombatUi), nameof(NCombatUi.AddToPlayContainer)),
-                postfix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(PlaceAfterAddingToPlayContainer)));
-            harmony.Patch(
-                AccessTools.DeclaredMethod(typeof(NCard), nameof(NCard.AnimCardToPlayPile)),
-                postfix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(PlaceAfterReturningFromChoice)));
-            harmony.Patch(
-                AccessTools.DeclaredMethod(typeof(NMultiplayerPlayerIntentHandler), "BeforeActionPausedForPlayerChoice"),
-                transpiler: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(TrackPlayerChoiceTween)));
-            ModEntry.Log.Info($"[{ModEntry.ModId}] play target fix: hooked");
+
+            // 逐个独立判断：任一处目标缺失都不能影响另一处。
+            var targetPosition = AccessTools.DeclaredMethod(
+                typeof(PileTypeExtensions),
+                nameof(PileTypeExtensions.GetTargetPosition));
+
+            if (targetPosition != null)
+            {
+                harmony.Patch(
+                    targetPosition,
+                    postfix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(AdjustTargetPosition)));
+
+                ModEntry.Log.Info($"[{ModEntry.ModId}] play target: GetTargetPosition hooked");
+            }
+            else
+            {
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] play target: GetTargetPosition not found");
+            }
+
+            var playTween = AccessTools.DeclaredMethod(typeof(CardPileCmd), "AppendPlayPileLerpTween");
+
+            if (playTween != null)
+            {
+                harmony.Patch(
+                    playTween,
+                    prefix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(PlaceBeforePlayTween)));
+
+                ModEntry.Log.Info($"[{ModEntry.ModId}] play target: AppendPlayPileLerpTween hooked");
+            }
+            else
+            {
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] play target: AppendPlayPileLerpTween not found");
+            }
         }
         catch (Exception e)
         {
-            ModEntry.Log.Warn($"[{ModEntry.ModId}] play target fix failed: {e.Message}");
+            ModEntry.Log.Warn($"[{ModEntry.ModId}] play target install failed: {e.Message}");
         }
     }
 
+    /// <summary>
+    /// 是否正在观战某个玩家打出的牌。
+    ///
+    /// 判据只用 SpectateOverlay —— 绝不碰 LocalContext。后者会被我们自己
+    /// 在 NCombatUi.Activate 的作用域里重定向，任何依赖它的判断都会随时机变化。
+    /// </summary>
     private static bool IsSpectatedCard(CardModel? model) =>
         SpectateOverlay.IsOpen &&
         SpectateOverlay.Target is { } target &&
-        model is { IsMutable: true } &&
-        model.Owner?.NetId == target.NetId;
+        model is { Owner: { } owner } &&
+        owner.NetId == target.NetId;
 
-    // 卡面以节点原点为中心，用播放区尺寸计算落点。
+    /// <summary>
+    /// 落点。不依赖 card.Size，只用播放区尺寸。
+    ///
+    /// 原版公式减去半张卡是为了把中心换算成左上角。观战时卡片节点往往刚出池、
+    /// Size 还是 (0,0)，减去的那一项实际为零，落点落在 (960,440)。
+    /// 实测这个位置才是画面上正确的那个，所以固定按 Size 为零计算。
+    /// </summary>
     private static Vector2 LandingPoint(Control play) => play.Size * 0.5f + Vector2.Up * 100f;
 
-    internal static void CenterCardsAtVanillaLanding()
+    private static void AdjustTargetPosition(PileType pileType, NCard? node, ref Vector2 __result)
     {
+        if (pileType != PileType.Play || !SpectateOverlay.IsOpen)
+        {
+            return;
+        }
+
+        if (node?.Model is not { } model || !IsSpectatedCard(model))
+        {
+            return;
+        }
+
         if (NCombatRoom.Instance?.Ui?.PlayContainer is not { } play)
         {
             return;
         }
 
-        Vector2 center = LandingPoint(play);
-        foreach (Node child in play.GetChildren())
-        {
-            // 入场已结束的牌可能仍在等待结算。只移动停在原版落点的牌，保留选牌等特效位移。
-            if (child is NCard card && IsSpectatedCard(card.Model) && card.Model?.Pile?.Type == PileType.Play &&
-                card.Position.IsEqualApprox(center - card.Size * 0.5f))
-            {
-                card.Position = center;
-            }
-        }
+        __result = LandingPoint(play);
     }
 
-    private static void AdjustTargetPosition(PileType pileType, NCard? node, ref Vector2 __result)
-    {
-        if (pileType == PileType.Play && IsSpectatedCard(node?.Model) &&
-            NCombatRoom.Instance?.Ui?.PlayContainer is { } play)
-        {
-            __result = LandingPoint(play);
-        }
-    }
-
+    /// <summary>
+    /// 入场补间开始前，先把卡片摆到落点。
+    ///
+    /// 补间的目标由 GetTargetPosition 给出（上面的 postfix 已经改成正确值），
+    /// 起点取的是卡片当前 position。把起点也设成落点，两者相等，
+    /// 卡片就直接出现在中央，而不是从播放队列的位置滑过来。
+    /// </summary>
     private static void PlaceBeforePlayTween(NCard cardNode)
     {
-        if (PlaceInPlayContainer(cardNode))
+        try
         {
-            // 在换堆时同步移除镜像。快速结算可能在下一次手牌刷新前就离开 Play。
-            HandMirror.RemovePlayedCard(cardNode.Model);
-        }
-    }
-
-    private static void PlaceAfterAddingToPlayContainer(NCard card) => PlaceInPlayContainer(card);
-
-    private static void FollowSpectateDuringPlayTween(Tween? tween, NCard cardNode) =>
-        CenterDuringEntry(tween, cardNode, PlayEntrySeconds);
-
-    private static void PlaceAfterReturningFromChoice(NCard __instance)
-    {
-        PlaceInPlayContainer(__instance);
-        CenterDuringEntry(__instance.PlayPileTween, __instance, ChoiceReturnSeconds);
-    }
-
-    private static void CenterDuringEntry(Tween? tween, NCard card, double duration)
-    {
-        if (tween == null || card.Model is not { IsMutable: true, Owner: { } owner } model ||
-            LocalContext.IsMe(owner) || NCombatRoom.Instance?.Ui?.PlayContainer is not { } play ||
-            card.GetParent() != play)
-        {
-            return;
-        }
-
-        bool centered = IsSpectatedCard(model);
-
-        // 与原版位置和缩放同一组补间，按顺序在原版位置之后更新，时长与原版缩放相同。
-        tween.Parallel().TweenMethod(Callable.From((float _) =>
-        {
-            if (card.Model != model || card.GetParent() != play)
+            if (cardNode?.Model is not { } model || !IsSpectatedCard(model))
             {
                 return;
             }
 
-            // 重新进入观战时，原版补间可能仍在使用关闭观战时算出的落点。
-            if (centered || IsSpectatedCard(model))
+            if (NCombatRoom.Instance?.Ui?.PlayContainer is not { } play)
             {
-                centered = true;
-                card.Position = LandingPoint(play);
+                return;
             }
-        }), 0f, 1f, duration);
-    }
 
-    private static IEnumerable<CodeInstruction> TrackPlayerChoiceTween(IEnumerable<CodeInstruction> instructions)
-    {
-        var createTween = AccessTools.Method(typeof(Node), nameof(Node.CreateTween));
-        var trackTween = AccessTools.Method(typeof(PlayTargetPositionFix), nameof(CreatePlayerChoiceTween));
-        return new CodeMatcher(instructions)
-            .MatchStartForward(CodeMatch.Calls(createTween))
-            .ThrowIfInvalid("Player-choice card tween not found")
-            .Set(OpCodes.Call, trackTween)
-            .InstructionEnumeration();
-    }
+            // 只处理已经位于播放区的卡片：此时 position 是相对 PlayContainer 的局部坐标。
+            if (cardNode.GetParent() != play)
+            {
+                return;
+            }
 
-    private static Tween CreatePlayerChoiceTween(NCard card)
-    {
-        Tween tween = card.CreateTween();
-        if (IsSpectatedCard(card.Model) && card.Model?.Pile?.Type == PileType.Play)
-        {
-            // 恢复出牌时，原版会先结束 PlayPileTween，再开始回到播放区的动画。
-            card.PlayPileTween = tween;
+            cardNode.Position = LandingPoint(play);
         }
-
-        return tween;
-    }
-
-    private static bool PlaceInPlayContainer(NCard card)
-    {
-        if (!IsSpectatedCard(card.Model) || card.Model?.Pile?.Type != PileType.Play ||
-            NCombatRoom.Instance?.Ui?.PlayContainer is not { } play || card.GetParent() != play)
+        catch
         {
-            return false;
+            // ignored
         }
-
-        // 结算可在入场补间结束前开始，离场动画会直接读取此时的位置。
-        card.Position = LandingPoint(play);
-        return true;
     }
 }

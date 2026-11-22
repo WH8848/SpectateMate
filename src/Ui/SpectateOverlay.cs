@@ -243,7 +243,6 @@ public static class SpectateOverlay
             SpectateUi.Apply(player);
             SpectateUi.SetInteraction(false);
             Refresh();
-            PlayTargetPositionFix.CenterCardsAtVanillaLanding();
             ModEntry.Log.Info($"[{ModEntry.ModId}] spectating netId={player.NetId}");
         }
         catch (Exception e)
