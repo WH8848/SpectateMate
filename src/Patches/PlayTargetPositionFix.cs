@@ -13,7 +13,7 @@ using SpectateMate.Ui;
 namespace SpectateMate.Patches;
 
 /// <summary>
-/// 观战时打出牌的落点修正。整个文件只做两件事，都直接写位置，不依赖时间、不依赖补间存活。
+/// 观战时打出牌的落点修正。三个介入点都直接写位置，不依赖时间、不依赖补间存活。
 ///
 /// 背景：原版算落点用
 ///     PlayContainer.Size * 0.5f - node.Size * 0.5f + Vector2.Up * 100f
@@ -22,11 +22,13 @@ namespace SpectateMate.Patches;
 /// 所以 Size 经常还是 (0,0)，这一项等于没减，落点在 (960,440) 与 (810,229) 之间跳变。
 /// 观战画面里正确的是 (960,440)。
 ///
-/// 这里只保留两处介入：
+/// 这里保留三处介入：
 ///   1. GetTargetPosition 的 postfix —— 让所有调用方（入场补间、飞行特效、消耗特效）
 ///      拿到的都是同一个正确值；
 ///   2. AppendPlayPileLerpTween 的 prefix —— 补间开始前先把卡片摆到落点，
 ///      于是补间起点等于终点，不会从队列位置滑过来，也就不会出现「停在半路」。
+///   3. AddToPlayContainer 的 postfix —— 换父节点完成后再写一次局部坐标，
+///      避免父节点变更把旧坐标重新解释成另一个位置。
 ///
 /// 曾经有过、现已删除的做法（都不可靠）：
 ///   - 给 PlayPileTween 挂 TweenMethod 每帧写位置：补间被 Kill 时它一起死，
