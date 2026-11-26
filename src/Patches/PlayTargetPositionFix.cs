@@ -3,6 +3,7 @@ using Godot;
 using HarmonyLib;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Combat;
@@ -76,6 +77,23 @@ internal static class PlayTargetPositionFix
             {
                 ModEntry.Log.Warn($"[{ModEntry.ModId}] play target: AppendPlayPileLerpTween not found");
             }
+
+            var addToPlay = AccessTools.DeclaredMethod(
+                typeof(NCombatUi),
+                nameof(NCombatUi.AddToPlayContainer));
+
+            if (addToPlay != null)
+            {
+                harmony.Patch(
+                    addToPlay,
+                    postfix: new HarmonyMethod(typeof(PlayTargetPositionFix), nameof(PlaceAfterAddingToPlayContainer)));
+
+                ModEntry.Log.Info($"[{ModEntry.ModId}] play target: AddToPlayContainer hooked");
+            }
+            else
+            {
+                ModEntry.Log.Warn($"[{ModEntry.ModId}] play target: AddToPlayContainer not found");
+            }
         }
         catch (Exception e)
         {
@@ -89,11 +107,44 @@ internal static class PlayTargetPositionFix
     /// 判据只用 SpectateOverlay —— 绝不碰 LocalContext。后者会被我们自己
     /// 在 NCombatUi.Activate 的作用域里重定向，任何依赖它的判断都会随时机变化。
     /// </summary>
-    private static bool IsSpectatedCard(CardModel? model) =>
-        SpectateOverlay.IsOpen &&
-        SpectateOverlay.Target is { } target &&
-        model is { Owner: { } owner } &&
-        owner.NetId == target.NetId;
+    private static bool IsSpectatedCard(CardModel? model)
+    {
+        if (!SpectateOverlay.IsOpen || model == null || SpectateOverlay.Target is not { } target)
+        {
+            return false;
+        }
+
+        // Owner 在观战期间可能被 LocalContext 的临时重定向解析成本地玩家。
+        // PlayPile 是网络同步后的权威归属，出牌流程进入这里时卡已经从手牌
+        // 移入该牌堆，所以用卡实例判断不会受当前显示玩家影响。
+        try
+        {
+            PlayerCombatState? combat = target.PlayerCombatState;
+            if (combat != null)
+            {
+                foreach (CardModel card in combat.PlayPile.Cards)
+                {
+                    if (ReferenceEquals(card, model))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // fall through to the stable network id check
+        }
+
+        try
+        {
+            return model.Owner?.NetId == target.NetId;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// 落点。不依赖 card.Size，只用播放区尺寸。
@@ -152,6 +203,31 @@ internal static class PlayTargetPositionFix
             }
 
             cardNode.Position = LandingPoint(play);
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    /// <summary>
+    /// AppendPlayPileLerpTween adds this callback after the position tween.
+    /// Reapply the same target after the card is actually parented to PlayContainer,
+    /// so a parent change cannot reinterpret the previous local position.
+    /// </summary>
+    private static void PlaceAfterAddingToPlayContainer(NCard card)
+    {
+        try
+        {
+            if (card?.Model is not { } model || !IsSpectatedCard(model))
+            {
+                return;
+            }
+
+            if (NCombatRoom.Instance?.Ui?.PlayContainer is { } play && card.GetParent() == play)
+            {
+                card.Position = LandingPoint(play);
+            }
         }
         catch
         {
